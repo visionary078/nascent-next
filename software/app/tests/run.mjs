@@ -1049,7 +1049,7 @@ assert(chatRestoreDecision({ hasHistory: true, askedOnce: true }).showNeverAsk =
   assert(levelFromDrag(3, -(GESTURE_STEP_PX - 1), 9) === 3, "partial step keeps the level");
   assert(levelFromDrag(8, -GESTURE_STEP_PX * 5, 9) === 9, "gesture never exceeds levelMax");
   assert(levelFromDrag(2, GESTURE_STEP_PX * 5, 9) === 1, "gesture never drops below level 1");
-  assert(shouldKeepScreenOn({ tab: "heart", page: "root", connected: true }), "screen stays on while a device is connected");
+  assert(shouldKeepScreenOn({ tab: "records", page: "root", connected: true }), "screen stays on while a device is connected");
   assert(shouldKeepScreenOn({ tab: "intimacy", page: "control", connected: false }), "screen stays on inside intimacy pages");
   assert(!shouldKeepScreenOn({ tab: "intimacy", page: "root", connected: false }), "intimacy landing does not hold the screen");
   assert(!shouldKeepScreenOn({ tab: "records", page: "root", connected: false }), "other tabs release the screen");

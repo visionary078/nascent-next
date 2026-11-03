@@ -3491,7 +3491,7 @@ async function onStop({ fromControl = false } = {}) {
   ui.draftLevel = null;
   stopScenarioAutomation();
   const reason = await emit(new BleDownlink({ cmd: NlCmd.STOP, auth: "" }));
-  haptic([40, 50, 40]);
+  if (!reason) haptic([40, 50, 40]);
   if (fromControl && !reason) ui.aftercareActive = true;
   render();
 }

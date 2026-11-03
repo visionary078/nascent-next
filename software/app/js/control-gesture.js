@@ -54,7 +54,16 @@ export function attachGestureSurface(surface, {
     }
     pointerId = event.pointerId;
     surface.dataset.dragging = "1";
-    try { surface.setPointerCapture?.(event.pointerId); } catch { /* ignore */ }
+    let captured = false;
+    try {
+      surface.setPointerCapture?.(event.pointerId);
+      captured = surface.hasPointerCapture?.(event.pointerId) ?? false;
+    } catch { /* ignore */ }
+    if (!captured) {
+      // 没拿到捕获时，在面板外松手不会派发到面板上。
+      window.addEventListener("pointerup", finish, { once: true });
+      window.addEventListener("pointercancel", abort, { once: true });
+    }
     startY = event.clientY;
     startX = event.clientX;
     from = startLevel();
@@ -63,7 +72,6 @@ export function attachGestureSurface(surface, {
     holdTimer = setTimeout(() => {
       if (moved || pointerId === null) return;
       reset();
-      haptic([40, 50, 40]);
       onHoldStop();
     }, GESTURE_STOP_HOLD_MS);
   });
@@ -91,9 +99,11 @@ export function attachGestureSurface(surface, {
     if (commit) onCommit(current);
   };
   surface.addEventListener("pointerup", finish);
-  surface.addEventListener("pointercancel", (event) => {
+  const abort = (event) => {
     if (event.pointerId !== pointerId) return;
     reset();
     onPreview(from);
-  });
+  };
+  surface.addEventListener("pointercancel", abort);
+  surface.addEventListener("lostpointercapture", abort);
 }
