@@ -1111,6 +1111,29 @@ assert(chatRestoreDecision({ hasHistory: true, askedOnce: true }).showNeverAsk =
   timers.forEach((fn) => fn());
   await Promise.resolve();
   assert(sent.length === before, "no further sends after halting");
+
+  assert(normalizeFrequency({ id: 'x" onmouseover="1', name: "x", stepMs: 1000, steps: [1, 2, 3, 2] }) == null,
+    "ids outside the whitelist are rejected");
+  assert(normalizeFrequency({ id: "mine:abc123", name: "x", stepMs: 1000, steps: [1, 2, 3, 2] })?.id === "mine:abc123",
+    "generated ids pass the whitelist");
+  const tampered = memoryStorage();
+  tampered.setItem("nascent.frequency.mine", JSON.stringify([
+    { id: "mine:ok", name: "好的", stepMs: 1000, steps: [1, 2, 3, 2] },
+    { id: "<img src=x>", name: "坏的", stepMs: 1000, steps: [1, 2, 3, 2] },
+  ]));
+  assert(new FrequencyLibrary(tampered).mine.map((f) => f.id).join() === "mine:ok", "tampered stored ids are dropped on load");
+
+  let thrownHalt = null;
+  const throwing = new FrequencyPlayer({
+    send: async () => { throw new Error("boom"); },
+    onHalt: (_f, reason) => { thrownHalt = reason; },
+    setTimer: () => 1,
+    clearTimer: () => {},
+  });
+  throwing.start(freq);
+  await Promise.resolve();
+  await Promise.resolve();
+  assert(!throwing.playing && thrownHalt === "下发失败，已停止播放", "a throwing send halts the player instead of hanging");
 }
 
 console.log(`\n${passed} passed, ${failed} failed`);

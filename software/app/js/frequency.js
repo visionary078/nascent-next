@@ -32,10 +32,12 @@ export function normalizeFrequency(raw) {
   if (!Number.isInteger(stepMs) || stepMs < FREQ_STEP_MS_MIN || stepMs > FREQ_STEP_MS_MAX) return null;
   if (steps.length < FREQ_STEPS_MIN || steps.length > FREQ_STEPS_MAX) return null;
   if (!steps.every((lv) => Number.isInteger(lv) && lv >= FREQ_LEVEL_MIN && lv <= FREQ_LEVEL_MAX)) return null;
+  const id = String(raw.id || "");
+  if (id && !/^[a-z0-9:_-]{1,48}$/i.test(id)) return null;
   const tags = Array.isArray(raw.tags)
     ? raw.tags.map((tag) => String(tag).trim().slice(0, 6)).filter(Boolean).slice(0, 3)
     : [];
-  return { id: String(raw.id || ""), name, tags, stepMs, steps };
+  return { id, name, tags, stepMs, steps };
 }
 
 export function frequencyDurationMs(freq) {
@@ -193,7 +195,12 @@ export class FrequencyPlayer {
     const freq = this.current;
     this.index = (this.index + 1) % freq.steps.length;
     const level = freq.steps[this.index];
-    const reason = await this._send(level);
+    let reason;
+    try {
+      reason = await this._send(level);
+    } catch {
+      reason = "下发失败，已停止播放";
+    }
     if (run !== this._run) return;
     if (reason) {
       this.halt(reason);
