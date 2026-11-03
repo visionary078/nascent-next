@@ -46,6 +46,9 @@ class CustomPersona(BaseModel):
 
 _PRESETS = [
     Persona(id="gentle", name="Natsu", tone="固有人设 001 · 安全依恋，笨拙但可靠"),
+    Persona(id="shuheng", name="疏衡", tone="晚归录音师 · 嘴笨耳朵尖，忙了会躲但会认"),
+    Persona(id="huaixi", name="淮汐", tone="池边晚班 · 安全第一，哨子一摘就说不完整"),
+    Persona(id="youting", name="柚汀", tone="侧台追光 · 眼比嘴快，替你调好了会越界"),
 ]
 
 _CUSTOM: dict[str, dict[str, CustomPersona]] = defaultdict(dict)

@@ -7,6 +7,7 @@ import json
 from .agent_contract import AgentTurnRequest, MemoryItem
 from .personas.builtin_001 import CHAR_NAME as BUILTIN_001_CHAR_NAME
 from .personas.builtin_001 import fill_system_prompt, is_builtin_001
+from .personas.builtin_deepened import fill_deepened_prompt, find_deepened
 
 SYSTEM_PROMPT = """你是 Nascent Love 情景里的陪伴角色，台词由 Chat 9B 生成。
 你现在就是下面角色卡里的人，用卡上的口吻和对方说话。不是客服，不是产品说明书，也不要自称 AI、助手、Agent 或系统。
@@ -115,9 +116,14 @@ def _history_messages(
 
 def build_messages(request: AgentTurnRequest, memories: list[MemoryItem]) -> list[dict[str, str]]:
     persona = request.persona if isinstance(request.persona, dict) else {}
-    assistant = str(persona.get("assistant_name") or persona.get("name") or BUILTIN_001_CHAR_NAME).strip() or BUILTIN_001_CHAR_NAME
+    deepened = find_deepened(request.persona_id, persona)
+    default_name = deepened.char_name if deepened else BUILTIN_001_CHAR_NAME
+    assistant = str(persona.get("assistant_name") or persona.get("name") or default_name).strip() or default_name
     user_name = str(persona.get("user_name") or "你").strip() or "你"
-    if is_builtin_001(request.persona_id, persona):
+    builtin = deepened is not None or is_builtin_001(request.persona_id, persona)
+    if deepened:
+        card = fill_deepened_prompt(deepened, assistant, user_name)
+    elif builtin:
         card = fill_system_prompt(assistant, user_name)
     else:
         card = format_persona_card(persona)
@@ -140,7 +146,7 @@ def build_messages(request: AgentTurnRequest, memories: list[MemoryItem]) -> lis
     }
     system_content = (
         SYSTEM_PROMPT
-        + ("\n\n" + card if is_builtin_001(request.persona_id, persona) else "\n\n角色卡：\n" + card)
+        + ("\n\n" + card if builtin else "\n\n角色卡：\n" + card)
         + "\n\n当前状态（不要念出来）：\n"
         + json.dumps(state, ensure_ascii=False)
     )
