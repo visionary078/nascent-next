@@ -31,7 +31,7 @@ function demoSessions() {
         quality: "complete",
         sample_count: 1080,
       },
-      summary: "本次从较低档位开始，中段节律更连续，结束前主动回到较轻的强度。",
+      summary: "本次从较低档位开始，中段升到 4 档，结束前主动回到较轻的强度。",
       user_feedback: "前面慢一点很舒服，最后收得也刚好。",
       timeline: [
         { minute: 0, level: 1, pressure_index: 0.18, temperature_delta: 0.0 },
@@ -63,7 +63,7 @@ function demoSessions() {
         quality: "partial",
         sample_count: 510,
       },
-      summary: "本次以手动低档为主。部分传感数据缺失，因此只描述可见事实。",
+      summary: "本次以手动低档为主。",
       user_feedback: "短一点更适合那天的状态。",
       timeline: [
         { minute: 0, level: 1, pressure_index: 0.2, temperature_delta: 0.0 },

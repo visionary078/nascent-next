@@ -2,18 +2,18 @@ import { apiFetch } from "./api.js";
 import { BleDownlink, NlCmd, NlConst, NlInsertState, NlKeyPress, NlLedState, NlMode } from "./protocol.js";
 import { CHANNEL, CHANNEL_LABEL, currentShell } from "./transport.js";
 import { bodyNotes } from "./body-notes.js";
-import { parseHash, legacyNotesTarget, SCENARIO_FLOW } from "./routes.js";
+import { parseHash, legacyHeartTarget, legacyNotesTarget, SCENARIO_FLOW } from "./routes.js";
 import {
   buildSensorContext,
   fileToAvatarDataUrl,
   ingestUplinkSample,
   formatCaptionHtml,
   personaAvatarHtml,
-  PHASE_UI,
   resetSensorWindow,
   scenarioChat,
   THREAD_KEY,
   chatRestoreDecision,
+  isSendEnter,
   speakDialogue,
   startRingtone,
   stopRingtone,
@@ -21,6 +21,17 @@ import {
   unlockSpeechPlayback,
 } from "./scenario-session.js";
 import { createHoldMic, createLiveCall } from "./live-call.js";
+import {
+  FREQ_EDITOR_STEPS,
+  FREQ_LEVEL_MAX,
+  FREQ_LEVEL_MIN,
+  FREQ_NAME_MAX,
+  FrequencyLibrary,
+  FrequencyPlayer,
+  decodeFrequency,
+  encodeFrequency,
+  frequencyDurationMs,
+} from "./frequency.js";
 import {
   DEFAULT_CUSTOM_PERSONA,
   PERSONA_CARDS,
@@ -74,8 +85,8 @@ import {
   syncCloudConfig,
   toRuntimePayload,
 } from "./cloud-config.js";
-import { CardCategory, heart, MoodUi } from "./heart.js";
-import { heartRate, hrChipText, nativeHeartRateAvailable, nightHeartLog } from "./hr.js";
+import { heart, MoodUi } from "./heart.js";
+import { heartRate, nativeHeartRateAvailable, nightHeartLog } from "./hr.js";
 import {
   buildSleepReport,
   collectRecentMoodKeys,
@@ -572,6 +583,8 @@ const ICONS = {
   moon: '<path d="M15.2 3.2A8.8 8.8 0 1 0 20.8 14 7 7 0 0 1 15.2 3.2z"/>',
   phone: '<path d="M6.5 4h3l1.2 3.2-1.8 1.1a12 12 0 0 0 5.8 5.8l1.1-1.8L20 13.5v3A14.5 14.5 0 0 1 6.5 4z"/>',
   mic: '<rect x="9" y="3" width="6" height="11" rx="3"/><path d="M6 11a6 6 0 0 0 12 0"/><path d="M12 17v4"/><path d="M9 21h6"/>',
+  play: '<path d="M8 5v14l11-7z"/>',
+  wave: '<path d="M2 12c2.5-5 4.5-5 7 0s4.5 5 7 0 4.5-5 6 0"/>',
 };
 
 function icon(name) {
@@ -579,7 +592,7 @@ function icon(name) {
 }
 
 function route() {
-  return parseHash(location.hash || "#/heart");
+  return parseHash(location.hash || "#/intimacy");
 }
 
 function go(path) {
@@ -669,7 +682,7 @@ function bandStatusText() {
   return `已连接：${ui.devices.bandSerial}`;
 }
 
-/** 主设备状态条：心绪/亲密时刻悬浮，或设置页可点连接 */
+/** 主设备状态条：亲密时刻悬浮，或设置页可点连接 */
 function statusBar({
   clickable = false,
   floating = false,
@@ -726,7 +739,6 @@ function topbar(title, { back = false, backTo = "", action = "" } = {}) {
 
 function nav(tab) {
   const items = [
-    ["heart", "heart", "心绪"],
     ["intimacy", "book", "亲密"],
     ["records", "activity", "记录"],
     ["settings", "person", "我的"],
@@ -736,95 +748,191 @@ function nav(tab) {
   `).join("")}</nav>`;
 }
 
-function renderHeart() {
-  const todayMood = heart.moodFor(new Date())?.mood;
-  const favorites = heart.favoriteCardIds;
-  const days = Array.from({ length: 14 }, (_, i) => {
-    const d = new Date();
-    d.setDate(d.getDate() - (13 - i));
-    d.setHours(0, 0, 0, 0);
-    return d;
-  });
-  return `${topbar("心绪", {
-    action: `<button class="icon-btn" data-act="favorites" aria-label="收藏的内容">
-      ${icon("bookmark")}${favorites.size ? `<span class="pill">${favorites.size}</span>` : ""}
-    </button>`,
-  })}
-  ${floatingDeviceBar()}
-  <main class="page page-with-float">
-    <section class="hero">
-      <div>
-        <h2>你好，今天也来听听自己</h2>
-        <p>一点点觉察，就足够成为和自己靠近的开始。</p>
-      </div>
-      <div class="streak"><strong>${heart.streak}</strong><span>连续记录</span></div>
-    </section>
-    <div class="section-head">
-      <h3>此刻的心绪</h3>
-      <span>${todayMood ? "今天已记录" : "今天还没有记录"}</span>
-    </div>
-    <div class="moods">
-      ${NlMoodButtons(todayMood)}
-    </div>
-    <div class="section-head">
-      <h3>今日身体小课</h3>
-      <span data-card-counter>${heart.activeCardIndex + 1}/${heart.cards.length}</span>
-    </div>
-    <div class="cards" data-cards>
-      ${heart.cards.map((card, index) => knowledgeCard(card, index)).join("")}
-    </div>
-    <div class="section-head"><h3>最近的心绪</h3></div>
-    <div class="calendar">
-      ${days.map((day) => {
-        const entry = heart.moodFor(day);
-        const color = entry ? MoodUi[entry.mood].color : "#3a3244";
-        const label = `${day.getMonth() + 1}/${day.getDate()}${entry ? ` ${MoodUi[entry.mood].label}` : ""}`;
-        return `<div class="cal-day" title="${label}" style="background:${color}"></div>`;
-      }).join("")}
-    </div>
-    <p class="disclaimer">内容仅供参考，不能替代医生或专业人士建议。</p>
-  </main>
-  ${nav("heart")}`;
-}
-
-function NlMoodButtons(selected) {
-  return Object.entries(MoodUi).map(([mood, meta]) => `
-    <button class="mood ${selected === mood ? "selected" : ""}" data-act="mood" data-mood="${mood}" style="--mood:${meta.color}">
-      <span>${meta.emoji}</span><small>${meta.label}</small>
-    </button>
-  `).join("");
-}
-
-function knowledgeCard(card, index) {
-  const cat = CardCategory[card.category];
-  return `<article class="card" data-act="open-card" data-index="${index}">
-    <div style="display:flex;align-items:center">
-      <span class="pill">${cat.label}</span>
-      ${heart.isRead(card.id) ? `<span style="margin-left:auto;color:var(--comfort)">${icon("check")}</span>` : ""}
-    </div>
-    <h4>${card.title}</h4>
-    <p>${card.summary}</p>
-    <div class="card-actions">
-      <span class="hint">点击展开</span>
-      <button class="icon-btn" data-act="favorite" data-index="${index}" aria-label="${heart.isFavorite(card.id) ? "取消收藏" : "收藏"}">${icon("bookmark")}</button>
-      <button class="icon-btn" data-act="share" data-index="${index}" aria-label="分享预览">${icon("share")}</button>
-    </div>
-  </article>`;
-}
-
 function renderIntimacy() {
   return `${topbar("亲密时刻")}
   ${floatingDeviceBar({ connectable: true, trailing: "shield" })}
   <main class="page intimacy-home page-with-float">
     <h2 class="lead">选择今天的靠近方式</h2>
-    <p class="sub">想有人陪着说话，或快慢都自己来，选下面一种。</p>
+    <p class="sub">有人陪着说话、自己掌控，或者挑一段现成的节奏。</p>
     <div class="entry-stack">
       ${entry("scenario", "heart", "情景模式", "选一个人，他会打给你。")}
       ${entry("control", "sliders", "自我控制", "档位和节奏都自己来。")}
+      ${entry("frequency", "wave", "频率广场", "挑一段节奏，也能分享给别人。")}
     </div>
     <div class="note">${icon("info")}<span>想停随时能停。用过的记录在「记录」里。</span></div>
   </main>
   ${nav("intimacy")}`;
+}
+
+const freqLibrary = new FrequencyLibrary();
+const freqPlayer = new FrequencyPlayer({
+  send: (level) => sendCommand(new BleDownlink({ cmd: NlCmd.SET_LEVEL, level, auth: "" })),
+  onStep: (freq, index) => patchFrequencyStep(freq.id, index),
+  onHalt: (_freq, reason) => {
+    if (reason) toast(reason);
+    if (route().page === "frequency") render();
+  },
+});
+
+function renderFrequency() {
+  const tab = ui.freqTab === "mine" ? "mine" : "plaza";
+  const list = tab === "mine" ? freqLibrary.mine : freqLibrary.presets;
+  const empty = tab === "mine"
+    ? `<div class="empty compact">${icon("wave")}<p>还没有自己的频率。新建一段，或者粘贴别人分享的分享码。</p></div>`
+    : "";
+  return `${topbar("频率广场", { back: true })}
+  ${floatingDeviceBar({ connectable: true, trailing: getConnected() ? "check" : "chevron" })}
+  <main class="page freq-page page-with-float">
+    <button class="stop" data-act="stop">${icon("stop")} 停 止</button>
+    <div class="freq-tabs" role="tablist">
+      <button role="tab" aria-selected="${tab === "plaza"}" class="${tab === "plaza" ? "active" : ""}" data-act="freq-tab" data-tab="plaza">精选</button>
+      <button role="tab" aria-selected="${tab === "mine"}" class="${tab === "mine" ? "active" : ""}" data-act="freq-tab" data-tab="mine">我的</button>
+    </div>
+    ${tab === "mine" ? `<div class="freq-tools">
+      <button class="ghost" data-act="freq-new">${icon("plus")} 新建频率</button>
+      <button class="ghost" data-act="freq-import">粘贴分享码</button>
+    </div>` : ""}
+    <div class="freq-list">
+      ${list.length ? list.map((item) => frequencyCard(item, tab === "mine")).join("") : empty}
+    </div>
+    <p class="hint">分享码只包含名字、标签和档位，不含你的设备或个人信息。播放时随时可以按停止。</p>
+  </main>`;
+}
+
+function frequencyCard(freq, editable) {
+  const playing = freqPlayer.current?.id === freq.id;
+  const fav = freqLibrary.isFavorite(freq.id);
+  const seconds = Math.round(frequencyDurationMs(freq) / 1000);
+  return `<article class="freq-card ${playing ? "is-playing" : ""}" data-freq-card="${escapeHtml(freq.id)}">
+    <div class="freq-head">
+      <h3>${escapeHtml(freq.name)}</h3>
+      <span>${freq.tags.map(escapeHtml).join(" · ")}${freq.tags.length ? " · " : ""}${seconds} 秒一轮</span>
+    </div>
+    <div class="freq-wave" aria-hidden="true">
+      ${freq.steps.map((lv, i) => `<i data-step="${i}" class="${playing && freqPlayer.index === i ? "on" : ""}" style="--lv:${Math.round(lv / FREQ_LEVEL_MAX * 100)}%"></i>`).join("")}
+    </div>
+    <div class="freq-actions">
+      <button class="freq-play" data-act="freq-play" data-id="${escapeHtml(freq.id)}">${playing ? `${icon("stop")} 停下` : `${icon("play")} 播放`}</button>
+      <button class="icon-btn ${fav ? "on" : ""}" data-act="freq-fav" data-id="${escapeHtml(freq.id)}" aria-label="${fav ? "取消收藏" : "收藏"}">${icon("heart")}</button>
+      <button class="icon-btn" data-act="freq-share" data-id="${escapeHtml(freq.id)}" aria-label="分享">${icon("share")}</button>
+      ${editable ? `<button class="icon-btn" data-act="freq-delete" data-id="${escapeHtml(freq.id)}" aria-label="删除">${icon("trash")}</button>` : ""}
+    </div>
+  </article>`;
+}
+
+function patchFrequencyStep(id, index) {
+  const card = root.querySelector(`[data-freq-card="${CSS.escape(id)}"]`);
+  if (!card) return;
+  card.querySelectorAll("[data-step]").forEach((bar) => {
+    bar.classList.toggle("on", Number(bar.dataset.step) === index);
+  });
+}
+
+async function haltFrequency({ sendStop = false } = {}) {
+  if (!freqPlayer.playing) return;
+  freqPlayer.halt(null);
+  if (sendStop) await emit(new BleDownlink({ cmd: NlCmd.STOP, auth: "" }));
+}
+
+async function toggleFrequency(id) {
+  if (freqPlayer.current?.id === id) {
+    await haltFrequency({ sendStop: true });
+    render();
+    return;
+  }
+  const freq = freqLibrary.find(id);
+  if (!freq) return;
+  if (!getConnected()) {
+    toast("请先连接设备");
+    return;
+  }
+  freqPlayer.start(freq);
+  render();
+}
+
+function shareFrequency(id) {
+  const freq = freqLibrary.find(id);
+  if (!freq) return;
+  const code = encodeFrequency(freq);
+  const text = `我在 Nascent 频率广场分享了「${freq.name}」，复制这段分享码到「频率广场 → 我的 → 粘贴分享码」：\n${code}`;
+  const sheet = openSheet(`
+    <h2>分享「${escapeHtml(freq.name)}」</h2>
+    <p class="sub">分享码只包含名字、标签和档位。</p>
+    <textarea class="ob-input freq-code" rows="4" readonly>${escapeHtml(code)}</textarea>
+    <button class="primary" data-freq-copy style="margin-top:12px">复制分享内容</button>
+    ${navigator.share ? `<button class="ghost" data-freq-system-share style="margin-top:8px">用系统分享</button>` : ""}
+  `);
+  sheet.querySelector("[data-freq-copy]").onclick = async () => {
+    try {
+      await navigator.clipboard.writeText(text);
+      toast("已复制");
+      closeSheet();
+    } catch {
+      toast("复制失败，请长按上面的分享码手动复制");
+    }
+  };
+  const systemShare = sheet.querySelector("[data-freq-system-share]");
+  if (systemShare) {
+    systemShare.onclick = async () => {
+      try { await navigator.share({ title: freq.name, text }); closeSheet(); } catch { /* 用户取消 */ }
+    };
+  }
+}
+
+function importFrequency() {
+  const sheet = openSheet(`
+    <h2>粘贴分享码</h2>
+    <p class="sub">把别人发给你的整段文字贴进来就行，会自动找出分享码。</p>
+    <textarea class="ob-input" id="freq-import-text" rows="4" placeholder="NLF1:…"></textarea>
+    <button class="primary" data-freq-import-save style="margin-top:12px">加入我的</button>
+  `);
+  sheet.querySelector("[data-freq-import-save]").onclick = () => {
+    const freq = decodeFrequency(sheet.querySelector("#freq-import-text").value);
+    if (!freq) {
+      toast("没认出分享码，请检查是否完整");
+      return;
+    }
+    const saved = freqLibrary.save({ ...freq, id: "" });
+    closeSheet();
+    ui.freqTab = "mine";
+    toast(`已加入「${saved.name}」`);
+    render();
+  };
+}
+
+function composeFrequency() {
+  const initial = Array.from({ length: FREQ_EDITOR_STEPS }, (_, i) => [2, 3, 4, 5, 4, 3][i % 6]);
+  const sheet = openSheet(`
+    <h2>新建频率</h2>
+    <input class="ob-input" id="freq-name" maxlength="${FREQ_NAME_MAX}" placeholder="给它起个名字" />
+    <p class="group">每一格是一拍，往上拖更强</p>
+    <div class="freq-editor">
+      ${initial.map((lv, i) => `<input type="range" min="${FREQ_LEVEL_MIN}" max="${FREQ_LEVEL_MAX}" step="1" value="${lv}" data-freq-step="${i}" aria-label="第 ${i + 1} 拍" />`).join("")}
+    </div>
+    <p class="group">节拍快慢</p>
+    <div class="freq-speed">
+      ${[[500, "快"], [1000, "中"], [2000, "慢"]].map(([ms, label]) => `<label><input type="radio" name="freq-speed" value="${ms}" ${ms === 1000 ? "checked" : ""} /> ${label}</label>`).join("")}
+    </div>
+    <button class="primary" data-freq-save style="margin-top:16px">保存到我的</button>
+  `);
+  sheet.querySelector("[data-freq-save]").onclick = () => {
+    const name = sheet.querySelector("#freq-name").value.trim();
+    if (!name) {
+      toast("先给它起个名字");
+      return;
+    }
+    const steps = [...sheet.querySelectorAll("[data-freq-step]")].map((el) => Number(el.value));
+    const stepMs = Number(sheet.querySelector("input[name=freq-speed]:checked")?.value || 1000);
+    const saved = freqLibrary.save({ name, tags: ["自制"], stepMs, steps });
+    if (!saved) {
+      toast("这段频率保存不了，请检查后重试");
+      return;
+    }
+    closeSheet();
+    ui.freqTab = "mine";
+    toast(`已保存「${saved.name}」`);
+    render();
+  };
 }
 
 function entry(page, ico, title, subtitle) {
@@ -1148,31 +1256,19 @@ function renderScenarioChat() {
   const persona = ui.activePersona || { name: "当前人设", key: "none" };
   const messages = scenarioChat.messages(persona.key);
   const phase = scenarioChat.phase(persona.key);
-  const sensors = buildSensorContext(getUplink(), { bandConnected: ui.devices.bandConnected });
   const opening = messages.length > 0
     ? personaRejoinLine(persona)
     : personaOpeningLine(persona, phase);
-  const phaseUi = PHASE_UI[phase] || PHASE_UI.approaching;
   const dayLabel = messages.some((message) => message.role === "user") ? "还在聊" : "刚开始";
   return `<div class="chat-sticky-head">
     ${topbar(escapeHtml(persona.name), {
       back: true,
-      action: personaAvatarHtml(persona, "avatar top-avatar"),
+      action: `<button type="button" class="icon-btn chat-menu-btn" data-act="chat-menu" aria-label="更多">${personaAvatarHtml(persona, "avatar top-avatar")}</button>`,
     })}
-    <div class="scope-strip"><strong>${phaseUi.label}</strong><span>${ui.scenarioAutomation.authorized ? "设备自动调节中 · 想更近、想慢、想停，直接说" : "想更近、想慢、想停，直接说就好"}</span></div>
-    <div class="source-strip">
-      <span>温感 ${sensorLabel(sensors.temperature_state)}</span>
-      <span>压力 ${sensorLabel(sensors.pressure_rhythm)}</span>
-      <span>${hrChipText(sensors)}</span>
-    </div>
-    <div class="chat-tools">
-      <button type="button" class="ghost chat-tool" data-act="scenario-voice">语音通话</button>
-      <button type="button" class="ghost chat-tool" data-act="forget-persona-memory">忘掉他记得的事</button>
-    </div>
   </div>
   <main class="insight-page scenario-chat-page">
     <div class="chat-thread im-thread">
-      <div class="chat-day">${dayLabel} · ${phaseUi.label}</div>
+      <div class="chat-day">${dayLabel}</div>
       ${messages.length ? "" : `<div class="bubble-row assistant">${personaAvatarHtml(persona)}<div class="bubble">${formatCaptionHtml(opening)}</div></div>`}
       ${messages.map((message, index) => renderScenarioChatMessage(message, persona, index)).join("")}
       ${scenarioChat.sending ? `<div class="bubble-row assistant">${personaAvatarHtml(persona)}<div class="bubble typing-dots" aria-label="正在输入"><i></i><i></i><i></i></div></div>` : ""}
@@ -1180,22 +1276,9 @@ function renderScenarioChat() {
   </main>
   <form class="chat-composer scenario-composer" id="scenario-chat-form">
     <button type="button" class="hold-mic${ui.voiceListening ? " listening" : ""}" data-act="hold-mic" aria-label="按住说话">${icon("mic")}</button>
-    <textarea name="message" rows="1" maxlength="2000" placeholder="${phase === "aftercare" ? "想被抱一会儿，还是先歇一歇" : "按住说话，或用文字"}" aria-label="输入想说的话"></textarea>
+    <textarea name="message" rows="1" maxlength="2000" enterkeyhint="send" placeholder="${phase === "aftercare" ? "想被抱一会儿，还是先歇一歇" : "按住说话，或用文字"}" aria-label="输入想说的话"></textarea>
     <button type="submit" aria-label="发送" ${scenarioChat.sending ? "disabled" : ""}>${icon("send")}</button>
   </form>`;
-}
-
-function sensorLabel(value) {
-  return {
-    unknown: "未知",
-    too_cold: "偏凉",
-    warming: "在升温",
-    reaching_comfort: "接近舒适",
-    comfortable: "舒适",
-    increasing: "在增强",
-    decreasing: "在回落",
-    steady: "平稳",
-  }[value] || "未知";
 }
 
 function renderScenarioChatMessage(message, persona, index, { compact = false } = {}) {
@@ -1293,20 +1376,10 @@ function selectedSession() {
 
 function wellnessCopy(session, recentCount) {
   const quality = QUALITY_UI[session.data_quality] || "数据有限";
-  const temp = session.temperature.direction === "rising"
-    ? "温感缓慢上升"
-    : session.temperature.direction === "falling"
-      ? "温感略有回落"
-      : "温感整体平稳";
-  const pressure = session.pressure.direction === "varied"
-    ? "压力节律变化较多"
-    : session.pressure.direction === "rising"
-      ? "压力节律后段更连续"
-      : "压力节律整体平稳";
   const hrNote = heartRate.snapshot.live
     ? "本次心率只作为参考性生理趋势，不是健康检测。"
-    : "本机暂无可用的小米手环心率与接触面温感。";
-  return `${temp}，${pressure}。数据完整度：${quality}。这一段对照了 ${recentCount} 次近期记录。这是使用与传感趋势的身心参考，不是健康检测，也不能替代医生或专业人士建议。${hrNote}`;
+    : "";
+  return `本次 ${formatDuration(session.duration_s)}，最高 ${session.max_level} 档。数据完整度：${quality}。这一段对照了 ${recentCount} 次近期记录。这是使用记录的回看，不是健康检测，也不能替代医生或专业人士建议。${hrNote}`;
 }
 
 function renderRecords() {
@@ -1335,8 +1408,6 @@ function renderRecords() {
       <h2 class="lead" style="margin-top:10px">${escapeHtml(latest.title)}</h2>
       <p class="sub">${formatSessionDate(latest.started_at, true)} · ${formatDuration(latest.duration_s)} · 最高 ${latest.max_level} 档</p>
       ${renderTimeline(latest.timeline)}
-      <div class="trend-copy"><span>${icon("thermometer")}</span><p>${escapeHtml(latest.temperature.label)}</p></div>
-      <div class="trend-copy"><span>${icon("activity")}</span><p>${escapeHtml(latest.pressure.label)}</p></div>
     </section>
     <section class="record-section">
       <div class="section-head"><h3>近期图谱</h3><span>${recent.length + 1} 次</span></div>
@@ -1354,7 +1425,7 @@ function renderRecords() {
       <div class="section-head"><h3>身心参考</h3></div>
       <div class="ref-card">
         <p>${escapeHtml(wellnessCopy(latest, recent.length + 1))}</p>
-        <p class="microcopy">不把压力、温感或心率写成高潮、疾病或固定偏好。</p>
+        <p class="microcopy">不把档位或心率写成高潮、疾病或固定偏好。</p>
       </div>
     </section>
     ${latest.notes.length ? `<section class="record-section">
@@ -1377,9 +1448,6 @@ function renderRecords() {
     </section>` : ""}
     <p class="disclaimer">内容仅供参考，不能替代医生或专业人士建议。</p>
   </main>
-  <div class="records-ask">
-    <button data-act="insight-self" data-session="${escapeHtml(latest.session_id)}">${icon("message")} 和 AI 聊聊自己</button>
-  </div>
   ${nav("records")}`;
 }
 
@@ -1528,16 +1596,11 @@ function renderNoteDetail(sessionId) {
     <section class="fact-grid" aria-label="本次事实摘要">
       <div><span>最高档位</span><strong>${session.max_level} / ${NlConst.levelMax}</strong></div>
       <div><span>使用时长</span><strong>${formatDuration(session.duration_s)}</strong></div>
-      <div><span>温感趋势</span><strong>${escapeHtml(session.temperature.direction === "rising" ? "缓慢上升" : "整体平稳")}</strong></div>
-      <div><span>压力节律</span><strong>${escapeHtml(session.pressure.direction === "varied" ? "变化较多" : session.pressure.direction === "rising" ? "后段连续" : "整体平稳")}</strong></div>
     </section>
 
     <section class="record-section">
-      <div class="section-head"><h3>档位与传感趋势</h3><span>低频聚合</span></div>
+      <div class="section-head"><h3>档位变化</h3></div>
       ${renderTimeline(session.timeline)}
-      <div class="trend-copy"><span>${icon("thermometer")}</span><p>${escapeHtml(session.temperature.label)}</p></div>
-      <div class="trend-copy"><span>${icon("activity")}</span><p>${escapeHtml(session.pressure.label)}</p></div>
-      <p class="microcopy">图中不显示原始 12 Hz 数组；AI 只读取趋势、数据质量和你确认的文字。</p>
     </section>
 
     <section class="record-section">
@@ -1556,25 +1619,19 @@ function renderNoteDetail(sessionId) {
 
     <section class="data-path">
       <h3>这次数据会去哪里</h3>
-      <ol><li>设备端先聚合温度与压力。</li><li>本页保存单次事实和你的反馈。</li><li>只有点击下方按钮，才把对应范围发给 Chat 9B。</li></ol>
+      <ol><li>本机只记录档位和时长。</li><li>本页保存单次事实和你的反馈。</li><li>记录可以随时删除。</li></ol>
     </section>
-  </main>
-  <div class="note-scope-actions">
-    <button data-act="insight-current" data-session="${escapeHtml(sessionId)}"><strong>只看这一次</strong><small>仅授权当前记录</small></button>
-    <button data-act="insight-recent" data-session="${escapeHtml(sessionId)}"><strong>参考近期记录</strong><small>先确认具体范围</small></button>
-  </div>`;
+  </main>`;
 }
 
 function renderTimeline(points) {
   if (!points?.length) return `<div class="empty compact">没有足够的趋势数据</div>`;
-  return `<div class="mini-chart" aria-label="本次档位和压力趋势">
+  return `<div class="mini-chart" aria-label="本次档位变化">
     ${points.map((point) => `<div class="chart-col">
-      <span class="pressure-bar" style="--pressure:${Math.round(point.pressure_index * 100)}%"></span>
       <span class="level-bar" style="--level:${Math.round(point.level / NlConst.levelMax * 100)}%"></span>
       <small>${point.minute}'</small>
     </div>`).join("")}
-  </div>
-  <div class="chart-legend"><span><i class="pressure-key"></i>压力指数</span><span><i class="level-key"></i>档位</span></div>`;
+  </div>`;
 }
 
 function renderMissingSession() {
@@ -1603,7 +1660,7 @@ function renderInsight(sessionId, query) {
     </div>
   </main>
   <form class="chat-composer" id="insight-form" data-session="${escapeHtml(sessionId)}" data-scope="${scope}" data-ids="${escapeHtml(ids.join(","))}">
-    <textarea name="message" rows="1" maxlength="2000" placeholder="问问这一次的自己" aria-label="输入想了解的问题"></textarea>
+    <textarea name="message" rows="1" maxlength="2000" enterkeyhint="send" placeholder="问问这一次的自己" aria-label="输入想了解的问题"></textarea>
     <button type="submit" aria-label="发送" ${ui.insightSending ? "disabled" : ""}>${icon("send")}</button>
   </form>`;
 }
@@ -1682,7 +1739,7 @@ function renderSettings() {
     </button>
     <button class="list-row" data-act="local-data">
       <strong>本地数据</strong>
-      <small>管理心绪、身体笔记、AI自定义人设</small>
+      <small>管理身体笔记、AI自定义人设</small>
     </button>
     <div class="group">AI 伴侣人设</div>
     <button class="list-row" data-act="persona-settings">
@@ -1744,7 +1801,7 @@ function appearanceSummary() {
   return {
     light: "全部浅色",
     dark: "全部深色",
-    default: "默认（亲密时刻深，心绪与我的浅）",
+    default: "默认（亲密时刻深，我的浅）",
   }[ui.prefs.appearance] || "默认";
 }
 
@@ -1946,14 +2003,14 @@ async function clearCloudFromForm() {
 function renderLocalData() {
   return `${topbar("本地数据", { back: true, backTo: "#/settings" })}
   <main class="page">
-    <p class="sub">心绪记录、身体笔记与 AI 自定义人设默认保存在本机。</p>
+    <p class="sub">身体笔记与 AI 自定义人设默认保存在本机。</p>
     <button class="list-row" data-act="view-persona-settings">
       <strong>查看目前的 AI 伴侣设置</strong>
       <small>${personaSummary()}</small>
     </button>
     <button class="list-row" data-act="export-data">
       <strong>数据导出</strong>
-      <small>导出本机心绪、笔记与自定义人设（demo 复制为文本）</small>
+      <small>导出本机笔记与自定义人设（demo 复制为文本）</small>
     </button>
     <button class="list-row" data-act="storage-settings">
       <strong>查看（修改）存储位置</strong>
@@ -1970,7 +2027,7 @@ function confirmClearLocalData() {
   closeSheet();
   const sheet = openSheet(`
     <h2>清除所有本地数据？</h2>
-    <p class="sub" style="margin:8px 0 18px">将删除本机上的心绪记录、身体笔记、自定义伴侣人设等数据。此操作不可撤销。</p>
+    <p class="sub" style="margin:8px 0 18px">将删除本机上的身体笔记、自定义伴侣人设等数据。此操作不可撤销。</p>
     <div class="ob-actions">
       <button class="ghost" data-clear-cancel>取消</button>
       <button class="primary danger-btn" data-clear-confirm>确认清除</button>
@@ -2215,9 +2272,9 @@ function renderNotifySettings() {
 
 function renderAppearanceSettings() {
   const options = [
-    ["light", "全部浅色", "心绪、亲密时刻、我的都用浅色"],
+    ["light", "全部浅色", "亲密时刻、我的都用浅色"],
     ["dark", "全部深色", "三处 Tab 都用深色低光"],
-    ["default", "默认", "亲密时刻深色；心绪与我的浅色"],
+    ["default", "默认", "亲密时刻深色；我的浅色"],
   ];
   return `${topbar("外观", { back: true, backTo: "#/settings" })}
   <main class="page">
@@ -2370,10 +2427,10 @@ function startOnboardingFlow() {
   ui.onboarding?.destroy?.();
   applyTheme("heart"); // 浅色引导
   ui.onboarding = mountOnboarding(root, {
-    onComplete({ firstCard, draft }) {
+    onComplete({ draft }) {
       ui.onboarding = null;
       ui.gateReady = true;
-      // 必须先离开 #/onboarding，再写会触发 heart.subscribe(render) 的完成礼。
+      // 必须先离开 #/onboarding，再 render。
       // 否则 render 仍视 hash 为强制引导 → 再次 mount，并把 gateReady 打回 false，
       // 随后 early-return 会把主界面永久挡住（表现为「第二次 onboarding」）。
       if (
@@ -2381,7 +2438,7 @@ function startOnboardingFlow() {
         || !location.hash
         || location.hash === "#"
       ) {
-        location.hash = "#/heart";
+        location.hash = "#/intimacy";
       }
       if (draft?.productId) {
         ui.devices.productId = draft.productId;
@@ -2419,7 +2476,6 @@ function startOnboardingFlow() {
         ui.prefs.safewords = String(draft.safeword).trim() || ui.prefs.safewords;
       }
       savePrefs();
-      if (firstCard) heart.prependCard(firstCard);
       render();
       toast("欢迎来到 Nascent");
     },
@@ -2428,7 +2484,7 @@ function startOnboardingFlow() {
 
 function maybeRedirectLegacyNotes() {
   const current = route();
-  const target = legacyNotesTarget(current);
+  const target = legacyHeartTarget(current) || legacyNotesTarget(current);
   if (!target) return false;
   if (current.sessionId && current.view !== "insight") ui.selectedRecordId = current.sessionId;
   go(target);
@@ -2991,6 +3047,7 @@ function render() {
   }
 
   const { tab, page, sub, id, sessionId, view, query } = route();
+  if (freqPlayer.playing && !(tab === "intimacy" && page === "frequency")) haltFrequency({ sendStop: true });
   applyTheme(tab === "lab" ? "settings" : tab);
   const nested = (tab === "intimacy" && page !== "root")
     || (tab === "settings" && page !== "root")
@@ -3034,7 +3091,6 @@ function render() {
       uplinkStats: link.uplinkStats,
     });
   }
-  else if (tab === "heart") root.innerHTML = renderHeart();
   else if (tab === "settings") {
     if (page === "persona" && sub === "fixed") root.innerHTML = renderPersonaFixed();
     else if (page === "persona" && sub === "customs") root.innerHTML = renderCustomPersonaList();
@@ -3060,11 +3116,11 @@ function render() {
   }
   else if (tab === "records") root.innerHTML = renderRecords();
   else if (page === "control") root.innerHTML = renderControl();
+  else if (page === "frequency") root.innerHTML = renderFrequency();
   else if (page === "scenario") root.innerHTML = renderScenario();
   else if (tab === "intimacy") root.innerHTML = renderIntimacy();
   else root.innerHTML = renderIntimacy();
   bind();
-  restoreCardScroll();
   if (onCall) {
     root.dataset.sceneCall = "1";
     startCallSequence();
@@ -3072,25 +3128,8 @@ function render() {
   if (fromCall) requestAnimationFrame(() => root.classList.add("from-call"));
 }
 
-function restoreCardScroll() {
-  const cards = root.querySelector("[data-cards]");
-  const card = cards?.children[heart.activeCardIndex];
-  if (!cards || !card) return;
-  cards.scrollLeft = card.offsetLeft;
-}
-
 function bind() {
   root.onclick = onClick;
-  const cards = root.querySelector("[data-cards]");
-  if (cards) {
-    cards.addEventListener("scroll", () => {
-      const w = cards.firstElementChild?.getBoundingClientRect().width || 1;
-      const index = Math.round(cards.scrollLeft / (w + 10));
-      heart.selectCard(index);
-      const counter = root.querySelector("[data-card-counter]");
-      if (counter) counter.textContent = `${heart.activeCardIndex + 1}/${heart.cards.length}`;
-    }, { passive: true });
-  }
   const slider = root.querySelector("#level-slider");
   if (slider) {
     slider.addEventListener("input", () => {
@@ -3102,6 +3141,13 @@ function bind() {
   }
   const form = root.querySelector("#insight-form");
   if (form) form.addEventListener("submit", onInsightSubmit);
+  root.querySelectorAll(".chat-composer textarea").forEach((area) => {
+    area.addEventListener("keydown", (event) => {
+      if (!isSendEnter(event)) return;
+      event.preventDefault();
+      area.form?.requestSubmit();
+    });
+  });
   const personaForm = root.querySelector("#persona-form");
   if (personaForm) personaForm.addEventListener("submit", onPersonaSubmit);
   const scenarioForm = root.querySelector("#scenario-chat-form");
@@ -3141,7 +3187,7 @@ async function onScenarioChatSubmit(event) {
   event.preventDefault();
   const area = event.currentTarget.elements.message;
   const text = area.value.trim();
-  if (!text) return;
+  if (!text || scenarioChat.sending) return;
   area.value = "";
   await sendScenarioLine(text, { speak: false });
 }
@@ -3371,7 +3417,8 @@ async function onClick(event) {
     }
   }
   else if (act === "sub") {
-    if (t.dataset.page === "control" && getConnected() && getUplink()?.mode !== NlMode.FREE) {
+    const manualPage = t.dataset.page === "control" || t.dataset.page === "frequency";
+    if (manualPage && getConnected() && getUplink()?.mode !== NlMode.FREE) {
       await emit(new BleDownlink({ cmd: NlCmd.SET_MODE, mode: NlMode.FREE, auth: "" }));
     }
     go(`#/intimacy/${t.dataset.page}`);
@@ -3533,24 +3580,29 @@ async function onClick(event) {
   }
   else if (act === "clear-all-local") confirmClearLocalData();
   else if (act === "reread-guide") openUsageGuideSheet();
-  else if (act === "mood") {
-    heart.recordMood(t.dataset.mood);
-    toast(`今天的心绪已记为${MoodUi[t.dataset.mood].label} ${MoodUi[t.dataset.mood].emoji}`);
-  }
-  else if (act === "open-card") openCard(Number(t.dataset.index));
-  else if (act === "favorite") {
-    event.stopPropagation();
-    heart.toggleFavorite(heart.cards[Number(t.dataset.index)]);
-  }
-  else if (act === "share") {
-    event.stopPropagation();
-    shareCard(heart.cards[Number(t.dataset.index)]);
-  }
-  else if (act === "favorites") showFavorites();
   else if (act === "stop") {
     ui.draftLevel = null;
     stopScenarioAutomation();
+    freqPlayer.halt(null);
     await emit(new BleDownlink({ cmd: NlCmd.STOP, auth: "" }));
+    render();
+  }
+  else if (act === "freq-tab") {
+    ui.freqTab = t.dataset.tab;
+    render();
+  }
+  else if (act === "freq-play") await toggleFrequency(t.dataset.id);
+  else if (act === "freq-fav") {
+    freqLibrary.toggleFavorite(t.dataset.id);
+    render();
+  }
+  else if (act === "freq-share") shareFrequency(t.dataset.id);
+  else if (act === "freq-new") composeFrequency();
+  else if (act === "freq-import") importFrequency();
+  else if (act === "freq-delete") {
+    if (freqPlayer.current?.id === t.dataset.id) await haltFrequency({ sendStop: true });
+    freqLibrary.remove(t.dataset.id);
+    toast("已删除");
     render();
   }
   else if (act === "scenario-start-auto") {
@@ -3621,7 +3673,14 @@ async function onClick(event) {
   else if (act === "call-text") {
     openScenarioTextFromCall();
   }
+  else if (act === "chat-menu") {
+    openSheet(`<div class="sheet-actions">
+      <button class="sheet-action" data-act="scenario-voice">${icon("phone")} 语音通话</button>
+      <button class="sheet-action danger" data-act="forget-persona-memory">忘掉他记得的事</button>
+    </div>`);
+  }
   else if (act === "scenario-voice") {
+    closeSheet();
     beginScenarioCall(ui.activePersona);
   }
   else if (act === "remember-memory") {
@@ -3638,6 +3697,7 @@ async function onClick(event) {
     render();
   }
   else if (act === "forget-persona-memory") {
+    closeSheet();
     try {
       await scenarioChat.forgetMemories(ui.activePersona);
       toast("已忘掉这个人设记得的事");
@@ -3722,38 +3782,6 @@ async function onClick(event) {
   else if (act === "clear-local") {
     go("#/settings/data");
   }
-}
-
-function openCard(index) {
-  const card = heart.cards[index];
-  heart.readCard(card);
-  openSheet(`
-    <p class="group" style="margin-top:0">${CardCategory[card.category].label}</p>
-    <h2>${card.title}</h2>
-    <p style="line-height:1.6">${card.body}</p>
-    <p class="hint" style="text-align:left">${card.source}</p>
-  `);
-}
-
-function shareCard(card) {
-  const preview = `${card.title}\n\n${card.summary}\n\nNascent · 心绪`;
-  const sheet = openSheet(`
-    <h2>分享预览</h2>
-    <article class="card" style="min-width:0;min-height:0;margin:12px 0">${preview.replaceAll("\n", "<br>")}</article>
-    <button class="primary" data-copy>复制内容</button>
-  `);
-  sheet.querySelector("[data-copy]").onclick = async () => {
-    await navigator.clipboard.writeText(preview);
-    closeSheet();
-    toast("内容已复制");
-  };
-}
-
-function showFavorites() {
-  const favorites = heart.cards.filter((c) => heart.isFavorite(c.id));
-  openSheet(favorites.length === 0
-    ? `<div class="empty">${icon("bookmark")}<p>还没有收藏的内容</p></div>`
-    : favorites.map((c) => `<div class="list-row"><strong>${c.title}</strong><small>${CardCategory[c.category].label}</small></div>`).join(""));
 }
 
 function composeSessionNote(sessionId, initial = "") {
@@ -3957,6 +3985,7 @@ function patchTelemetry() {
     const text = el.querySelector("[data-status-text]");
     if (text) text.textContent = deviceStatusText(connected, uplink, connection);
   });
+  if (freqPlayer.playing && !connected) freqPlayer.halt("设备已断开，已停止播放");
   if (tab === "intimacy" && page === "control") {
     const slider = root.querySelector("#level-slider");
     if (slider && document.activeElement !== slider) {
@@ -3973,13 +4002,6 @@ function patchTelemetry() {
     root.querySelectorAll("[data-act=mode]").forEach((btn) => {
       btn.classList.toggle("active", btn.dataset.mode === mode);
     });
-  }
-  if (tab === "intimacy" && page === "scenario" && sessionId === "chat") {
-    const sensors = buildSensorContext(uplink, { bandConnected: ui.devices.bandConnected });
-    const chips = root.querySelectorAll(".chat-sticky-head .source-strip span, .scenario-chat-page .source-strip span");
-    if (chips[0]) chips[0].textContent = `温感 ${sensorLabel(sensors.temperature_state)}`;
-    if (chips[1]) chips[1].textContent = `压力 ${sensorLabel(sensors.pressure_rhythm)}`;
-    if (chips[2]) chips[2].textContent = hrChipText(sensors);
   }
   if (tab === "lab") {
     patchLabDom(root, {
@@ -4062,7 +4084,7 @@ if ("serviceWorker" in navigator) {
   });
 }
 
-if (!location.hash) location.hash = isOnboardingDone() ? "#/heart" : "#/onboarding";
+if (!location.hash) location.hash = isOnboardingDone() ? "#/intimacy" : "#/onboarding";
 else render();
 loadPersonas();
 syncCloudConfig().then((status) => {
@@ -4070,6 +4092,10 @@ syncCloudConfig().then((status) => {
   if (route().tab === "settings") render();
 }).catch(() => {});
 bodyNotes.load().then(() => render());
+
+document.addEventListener("visibilitychange", () => {
+  if (document.visibilityState !== "visible") haltFrequency({ sendStop: true });
+});
 
 if ("wakeLock" in navigator) {
   document.addEventListener("visibilitychange", async () => {

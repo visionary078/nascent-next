@@ -15,7 +15,7 @@ import {
   trendFromDelta,
 } from "../js/hr.js";
 import { BodyNotesState } from "../js/body-notes.js";
-import { NAV_TABS, parseHash, legacyNotesTarget, SCENARIO_FLOW } from "../js/routes.js";
+import { NAV_TABS, parseHash, legacyHeartTarget, legacyNotesTarget, SCENARIO_FLOW } from "../js/routes.js";
 import {
   buildSleepReport,
   contrastCopy,
@@ -344,7 +344,11 @@ const offlineDelete = new BodyNotesState({ fetchImpl: null });
 assert(await offlineDelete.deleteSession("demo-session-03"), "offline demo allows local-only deletion");
 assert(offlineDelete.getSession("demo-session-03") === null, "offline deletion removes the demo record");
 
-assert(NAV_TABS.join("/") === "heart/intimacy/records/settings", "bottom nav has four tabs");
+assert(NAV_TABS.join("/") === "intimacy/records/settings", "bottom nav has three tabs");
+assert(parseHash("").tab === "intimacy", "empty hash lands on intimacy");
+assert(legacyHeartTarget(parseHash("#/heart")) === "#/intimacy", "old heart tab redirects to intimacy");
+assert(legacyHeartTarget(parseHash("#/records")) == null, "other tabs are not redirected");
+assert(parseHash("#/intimacy/frequency").page === "frequency", "frequency plaza is a nested intimacy page");
 assert(parseHash("#/intimacy").page === "root", "intimacy root is the two-entry hub");
 assert(parseHash("#/intimacy/scenario").page === "scenario", "scenario list lives under intimacy");
 assert(parseHash("#/intimacy/scenario/new").sessionId === "new", "persona form uses scenario/new");
@@ -1040,6 +1044,73 @@ assert(chatRestoreDecision({ hasHistory: true, askedOnce: true }).showNeverAsk =
   assert(togglePinnedKey(["custom:1"], "persona:gentle")[0] === "persona:gentle", "new focus is inserted first");
   assert(togglePinnedKey(["persona:gentle"], "persona:gentle").length === 0, "tapping focus again unpins");
   assert(PERSONA_SWIPE_HOLD_MS === 3000, "swipe actions stay open for 3 seconds");
+}
+
+{
+  const { isSendEnter } = await import("../js/scenario-session.js");
+  const key = (over) => ({ key: "Enter", shiftKey: false, isComposing: false, keyCode: 13, ...over });
+  assert(isSendEnter(key()), "plain Enter sends");
+  assert(!isSendEnter(key({ shiftKey: true })), "Shift+Enter inserts a newline");
+  assert(!isSendEnter(key({ isComposing: true })), "Enter while picking IME candidates does not send");
+  assert(!isSendEnter(key({ keyCode: 229 })), "IME composition keyCode does not send");
+  assert(!isSendEnter(key({ key: "a" })), "other keys do not send");
+}
+
+{
+  const {
+    FREQ_PRESETS,
+    FrequencyLibrary,
+    FrequencyPlayer,
+    decodeFrequency,
+    encodeFrequency,
+    normalizeFrequency,
+  } = await import("../js/frequency.js");
+  assert(FREQ_PRESETS.every((item) => normalizeFrequency(item)), "every preset frequency is valid");
+  const code = encodeFrequency({ name: "慢慢来", tags: ["舒缓"], stepMs: 1000, steps: [1, 2, 3, 2] });
+  assert(code.startsWith("NLF1:"), "share code carries the version prefix");
+  const back = decodeFrequency(`朋友发来的：${code} 试试看`);
+  assert(back?.name === "慢慢来" && back.steps.join("") === "1232", "share code round-trips from surrounding text");
+  assert(decodeFrequency("NLF1:not-base64!!") == null, "garbage share code is rejected");
+  assert(normalizeFrequency({ name: "x", stepMs: 1000, steps: [1, 2, 10, 2] }) == null, "levels above 9 are rejected");
+  assert(normalizeFrequency({ name: "x", stepMs: 100, steps: [1, 2, 3, 2] }) == null, "steps faster than 500 ms are rejected");
+  assert(normalizeFrequency({ name: "x", stepMs: 1000, steps: [1, 2] }) == null, "too-short frequency is rejected");
+  const forged = "NLF1:" + Buffer.from(JSON.stringify({ n: "x", t: [], s: 1000, l: "1290" })).toString("base64url");
+  assert(decodeFrequency(forged) == null, "share code with level 0 is rejected");
+
+  const lib = new FrequencyLibrary(memoryStorage());
+  const saved = lib.save({ name: "我的", tags: [], stepMs: 1000, steps: [2, 3, 4, 3] });
+  assert(saved.id.startsWith("mine:") && lib.mine.length === 1, "saving adds to my list");
+  assert(lib.toggleFavorite(saved.id) && lib.isFavorite(saved.id), "favorite toggles on");
+  lib.remove(saved.id);
+  assert(lib.mine.length === 0 && !lib.isFavorite(saved.id), "removing clears the item and its favorite");
+
+  const timers = [];
+  const sent = [];
+  let halted = null;
+  let reject = null;
+  const player = new FrequencyPlayer({
+    send: async (level) => { sent.push(level); return reject; },
+    onHalt: (_f, reason) => { halted = reason; },
+    setTimer: (fn) => { timers.push(fn); return timers.length; },
+    clearTimer: () => {},
+  });
+  const freq = { id: "t", name: "t", tags: [], stepMs: 1000, steps: [2, 4, 6, 4] };
+  player.start(freq);
+  await Promise.resolve();
+  for (let i = 0; i < 5; i += 1) {
+    timers.shift()();
+    await Promise.resolve();
+  }
+  assert(sent.join(",") === "2,4,6,4,2,4", "player loops through the steps in order");
+  reject = "已停止。";
+  timers.shift()();
+  await Promise.resolve();
+  await Promise.resolve();
+  assert(!player.playing && halted === "已停止。", "a rejected send halts the player with the reason");
+  const before = sent.length;
+  timers.forEach((fn) => fn());
+  await Promise.resolve();
+  assert(sent.length === before, "no further sends after halting");
 }
 
 console.log(`\n${passed} passed, ${failed} failed`);

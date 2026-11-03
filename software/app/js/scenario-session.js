@@ -24,6 +24,14 @@ export function chatRestoreDecision({
   return { kind: "ask", showNeverAsk: Boolean(askedOnce) };
 }
 
+/** 聊天输入框：回车发送，Shift+回车换行；输入法选字时的回车不算。 */
+export function isSendEnter(event) {
+  return event.key === "Enter"
+    && !event.shiftKey
+    && !event.isComposing
+    && event.keyCode !== 229;
+}
+
 const MAX_AVATAR_PX = 192;
 const MAX_AVATAR_CHARS = 120_000;
 

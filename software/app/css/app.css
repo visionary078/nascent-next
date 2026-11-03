@@ -422,7 +422,7 @@ a { color: var(--coral); }
   background: var(--nav-bg);
   border-top: 1px solid var(--nav-border);
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
+  grid-template-columns: repeat(3, 1fr);
 }
 
 .nav button {
@@ -430,9 +430,9 @@ a { color: var(--coral); }
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 2px;
+  gap: 3px;
   color: var(--muted);
-  font-size: 0.64rem;
+  font-size: 0.72rem;
 }
 
 .nav button.active { color: var(--coral); }
@@ -440,16 +440,21 @@ a { color: var(--coral); }
 .intimacy-home {
   display: flex;
   flex-direction: column;
-  min-height: calc(100dvh - 60px - var(--nav-h) - env(safe-area-inset-bottom));
+  padding-bottom: calc(var(--nav-h) + 8px + env(safe-area-inset-bottom));
 }
 
 .entry-stack {
-  flex: 1 1 auto;
   display: grid;
-  grid-template-rows: 1fr 1fr;
-  gap: 16px;
-  min-height: 280px;
+  gap: 12px;
   margin: 4px 0 16px;
+}
+
+.entry-stack .entry {
+  min-height: 132px;
+  flex-direction: row;
+  align-items: center;
+  justify-content: flex-start;
+  padding: 20px;
 }
 
 .entry {
@@ -503,6 +508,7 @@ a { color: var(--coral); }
 
 .entry-scenario { --entry-tint: var(--coral); }
 .entry-control { --entry-tint: color-mix(in srgb, var(--fog) 62%, var(--coral)); }
+.entry-frequency { --entry-tint: color-mix(in srgb, var(--comfort) 55%, var(--fog)); }
 
 .entry-ico {
   width: 68px;
@@ -1386,37 +1392,7 @@ button:disabled {
   gap: 6px;
 }
 
-.note-detail-page { padding-bottom: 150px; }
-.note-scope-actions {
-  position: fixed;
-  z-index: 10;
-  left: 50%;
-  bottom: 0;
-  transform: translateX(-50%);
-  width: min(100%, var(--max));
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 8px;
-  padding: 10px 12px calc(10px + env(safe-area-inset-bottom));
-  background: #1d1724f2;
-  border-top: 1px solid #3a3144;
-  backdrop-filter: blur(12px);
-}
-
-.note-scope-actions button {
-  min-height: 66px;
-  padding: 9px 8px;
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  display: flex;
-  flex-direction: column;
-  justify-content: center;
-  gap: 4px;
-}
-
-.note-scope-actions button:last-child { background: var(--coral); color: #2a1520; border-color: var(--coral); }
-.note-scope-actions strong { font-size: 0.92rem; }
-.note-scope-actions small { font-size: 0.68rem; opacity: 0.8; }
+.note-detail-page { padding-bottom: calc(24px + env(safe-area-inset-bottom)); }
 
 .scope-list { border-top: 1px solid #3a3144; }
 .scope-list div { display: flex; justify-content: space-between; gap: 12px; padding: 12px 0; border-bottom: 1px solid var(--line); }
@@ -1522,26 +1498,165 @@ button:disabled {
 }
 .chip.on { border-color: var(--coral); color: var(--text); background: #f4a7b918; }
 
-.records-page { padding-bottom: 108px; }
-.records-ask {
-  position: fixed;
-  z-index: 10;
-  left: 50%;
-  bottom: calc(var(--nav-h) + env(safe-area-inset-bottom));
-  transform: translateX(-50%);
-  width: min(100%, var(--max));
-  padding: 10px 12px;
-  background: #1d1724f2;
-  border-top: 1px solid #3a3144;
-  backdrop-filter: blur(12px);
+.records-page { padding-bottom: calc(var(--nav-h) + 24px + env(safe-area-inset-bottom)); }
+
+.chat-menu-btn {
+  width: auto;
+  height: auto;
+  padding: 0;
+  background: none;
 }
-.records-ask button {
+
+.sheet-actions {
+  display: grid;
+  gap: 8px;
+}
+
+.sheet-action {
   width: 100%;
-  min-height: 56px;
-  border-radius: 8px;
-  background: var(--coral);
-  color: #2a1520;
-  font-weight: 650;
+  min-height: 52px;
+  padding: 0 16px;
+  border-radius: 12px;
+  border: 1px solid var(--line);
+  background: var(--bg-soft);
+  color: var(--text);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 1rem;
+  text-align: left;
+}
+
+.sheet-action.danger {
+  color: var(--muted);
+  background: transparent;
+}
+
+.freq-page { padding-bottom: calc(24px + env(safe-area-inset-bottom)); }
+
+.freq-tabs {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 4px;
+  margin: 14px 0 12px;
+  padding: 4px;
+  border-radius: 12px;
+  background: var(--status-bg);
+}
+
+.freq-tabs button {
+  min-height: 40px;
+  border-radius: 9px;
+  color: var(--muted);
+  font-weight: 600;
+}
+
+.freq-tabs button.active {
+  background: var(--bg-card);
+  color: var(--text);
+}
+
+.freq-tools {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.freq-tools .ghost { padding: 12px 8px; }
+
+.freq-list {
+  display: grid;
+  gap: 12px;
+}
+
+.freq-card {
+  padding: 16px;
+  border-radius: 16px;
+  border: 1px solid var(--line);
+  background: var(--bg-card);
+}
+
+.freq-card.is-playing {
+  border-color: color-mix(in srgb, var(--coral) 60%, var(--line));
+}
+
+.freq-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.freq-head h3 { margin: 0; font-size: 1.08rem; }
+.freq-head span { color: var(--muted); font-size: 0.78rem; }
+
+.freq-wave {
+  display: flex;
+  align-items: flex-end;
+  gap: 3px;
+  height: 44px;
+  margin: 12px 0;
+}
+
+.freq-wave i {
+  flex: 1;
+  height: max(10%, var(--lv));
+  border-radius: 3px;
+  background: color-mix(in srgb, var(--coral) 35%, var(--status-bg));
+  transition: background 0.15s ease;
+}
+
+.freq-wave i.on { background: var(--coral); }
+
+.freq-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.freq-play {
+  flex: 1;
+  min-height: 44px;
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--coral) 18%, var(--status-bg));
+  color: var(--text);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  font-weight: 600;
+}
+
+.freq-card.is-playing .freq-play { background: var(--coral); color: #2a1520; }
+.freq-actions .icon-btn.on { color: var(--coral); }
+
+.freq-code { font-family: ui-monospace, monospace; font-size: 0.82rem; word-break: break-all; }
+
+.freq-editor {
+  display: grid;
+  grid-template-columns: repeat(12, 1fr);
+  gap: 4px;
+  height: 140px;
+}
+
+.freq-editor input[type="range"] {
+  width: 100%;
+  height: 100%;
+  writing-mode: vertical-lr;
+  direction: rtl;
+  accent-color: var(--coral);
+}
+
+.freq-speed {
+  display: flex;
+  gap: 16px;
+}
+
+.freq-speed label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
 }
 .older-row {
   width: 100%;
@@ -2191,8 +2306,6 @@ button.text-link {
 @media (max-width: 360px) {
   .session-row { grid-template-columns: 52px minmax(0, 1fr) 20px; }
   .session-row .quality { display: none; }
-  .note-scope-actions strong { font-size: 0.84rem; }
-  .note-scope-actions small { font-size: 0.64rem; }
 }
 
 .lab-page .stop { margin: 8px 0 16px; }
