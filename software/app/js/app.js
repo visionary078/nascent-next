@@ -2,6 +2,7 @@ import { apiFetch } from "./api.js";
 import { BleDownlink, NlCmd, NlConst, NlInsertState, NlKeyPress, NlLedState, NlMode } from "./protocol.js";
 import { CHANNEL, CHANNEL_LABEL, currentShell } from "./transport.js";
 import { bodyNotes } from "./body-notes.js";
+import { attachGestureSurface, haptic, shouldKeepScreenOn } from "./control-gesture.js";
 import { parseHash, legacyNotesTarget, SCENARIO_FLOW } from "./routes.js";
 import {
   buildSensorContext,
@@ -121,6 +122,8 @@ const ui = {
   toastTimer: null,
   sheet: null,
   draftLevel: null,
+  aftercareActive: false,
+  aftercareSoundOn: false,
   scenarioStarted: false,
   scene: 0,
   personas: [],
@@ -186,6 +189,7 @@ function loadPrefs() {
       chatRestoreSkip: Boolean(raw.chatRestoreSkip),
       chatRestoreLast: raw.chatRestoreLast === "fresh" ? "fresh" : "restore",
       chatRestoreAskedOnce: Boolean(raw.chatRestoreAskedOnce),
+      controlGesture: raw.controlGesture !== false,
     };
   } catch {
     return {
@@ -203,6 +207,7 @@ function loadPrefs() {
       chatRestoreSkip: false,
       chatRestoreLast: "restore",
       chatRestoreAskedOnce: false,
+      controlGesture: true,
     };
   }
 }
@@ -842,19 +847,35 @@ function renderControl() {
   const level = ui.draftLevel ?? (reported > 0 ? reported : 1);
   const mode = uplink?.mode ?? NlMode.FREE;
   const disabled = connected ? "" : "disabled";
+  if (ui.aftercareActive) return renderControlAftercare();
+  const gesture = ui.prefs.controlGesture;
+  const stage = gesture
+    ? `<div class="gesture-surface ${connected ? "" : "is-disabled"}" id="gesture-surface" role="slider"
+        aria-label="上下滑动调档" aria-valuemin="1" aria-valuemax="${NlConst.levelMax}" aria-valuenow="${level}">
+      <div class="gesture-cue"><span class="gesture-arrow">↕</span><span>上下滑动调档 · 按住不动停止</span></div>
+      <div class="gesture-level">
+        <span class="gesture-level-num" data-gesture-level>${level}</span>
+        <span class="gesture-level-unit">/ ${NlConst.levelMax} 档</span>
+      </div>
+      <div class="gesture-halo" aria-hidden="true"></div>
+    </div>`
+    : `<div class="control-stage">
+      <div class="level" data-level-label>${reported === 0 ? "启动" : "档位"} ${level} / ${NlConst.levelMax}</div>
+      <input id="level-slider" type="range" min="1" max="${NlConst.levelMax}" step="1" value="${level}" ${disabled} />
+    </div>`;
   return `${topbar("自我控制", { back: true })}
   ${floatingDeviceBar({ connectable: true, trailing: connected ? "check" : "chevron" })}
-  <main class="page control-page page-with-float">
+  <main class="page control-page page-with-float ${gesture ? "is-gesture" : ""}">
     <button class="stop" data-act="stop">${icon("stop")} 停 止</button>
     <div class="power-actions" aria-label="设备电源">
       <button class="power-on ${reported > 0 ? "active" : ""}" data-act="power-on" ${disabled}>开启</button>
       <button class="power-off ${reported === 0 ? "active" : ""}" data-act="power-off" ${disabled}>关闭</button>
     </div>
     <p class="power-hint">停止后，请在设备上确认恢复。</p>
-    <div class="control-stage">
-      <div class="level" data-level-label>${reported === 0 ? "启动" : "档位"} ${level} / ${NlConst.levelMax}</div>
-      <input id="level-slider" type="range" min="1" max="${NlConst.levelMax}" step="1" value="${level}" ${disabled} />
-    </div>
+    ${stage}
+    <button class="text-link control-input-toggle" data-act="toggle-control-gesture">
+      ${gesture ? "改用滑杆" : "改用滑动面板（不用看屏幕）"}
+    </button>
     <div class="modes">
       ${[
         [NlMode.FREE, "手动"],
@@ -865,6 +886,107 @@ function renderControl() {
     </div>
     <p class="hint">健康提示：不适应立刻停。润滑不够先补上。胸闷、头晕或疼痛时请停止。</p>
   </main>`;
+}
+
+function renderControlAftercare() {
+  return `${topbar("先歇一会儿", { back: true })}
+  <main class="page control-page aftercare-page">
+    <section class="aftercare-card">
+      <h3>已经停下了</h3>
+      <p>不用急着做什么。喝点温水，或者就这样躺一会儿。</p>
+      <button class="aftercare-sound ${ui.aftercareSoundOn ? "active" : ""}" data-act="toggle-aftercare-sound"
+        aria-pressed="${ui.aftercareSoundOn}">
+        ${ui.aftercareSoundOn ? "正在放轻柔的雨声" : "放一点轻柔的雨声"}
+      </button>
+      <button class="text-link" data-act="reread-guide">有点不舒服？看看安全与卫生指南</button>
+      <button class="aftercare-dismiss" data-act="dismiss-aftercare">回到自我控制</button>
+    </section>
+  </main>`;
+}
+
+let aftercareAudio = null;
+
+function setAftercareSound(on) {
+  if (aftercareAudio) {
+    try { aftercareAudio.source.stop(); } catch { /* ignore */ }
+    aftercareAudio.ctx.close().catch(() => {});
+    aftercareAudio = null;
+  }
+  if (!on) return false;
+  const AudioCtx = window.AudioContext || window.webkitAudioContext;
+  if (!AudioCtx) return false;
+  try {
+    const ctx = new AudioCtx();
+    const length = ctx.sampleRate * 2;
+    const buffer = ctx.createBuffer(1, length, ctx.sampleRate);
+    const data = buffer.getChannelData(0);
+    let last = 0;
+    for (let i = 0; i < length; i += 1) {
+      last = (last + 0.02 * (Math.random() * 2 - 1)) / 1.02;
+      data[i] = last * 2;
+    }
+    const source = ctx.createBufferSource();
+    source.buffer = buffer;
+    source.loop = true;
+    const filter = ctx.createBiquadFilter();
+    filter.type = "lowpass";
+    filter.frequency.value = 450;
+    const gain = ctx.createGain();
+    gain.gain.setValueAtTime(0.01, ctx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.06, ctx.currentTime + 1.5);
+    source.connect(filter);
+    filter.connect(gain);
+    gain.connect(ctx.destination);
+    source.start();
+    aftercareAudio = { ctx, source };
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function leaveAftercare() {
+  ui.aftercareActive = false;
+  ui.aftercareSoundOn = setAftercareSound(false);
+}
+
+// 熄屏会挂起页面脚本，设备链路随之被判断连。Android WebView 没有 Wake Lock API，走壳的原生开关。
+let screenWakeLock = null;
+let screenWakePending = false;
+let screenWakeWanted = null;
+
+async function syncScreenWakeLock() {
+  const { tab, page } = route();
+  const want = document.visibilityState === "visible"
+    && shouldKeepScreenOn({ tab, page, connected: getConnected() });
+  if (want !== screenWakeWanted) {
+    screenWakeWanted = want;
+    try { window.NascentShell?.setKeepScreenOn?.(want); } catch { /* ignore */ }
+  }
+  if (!("wakeLock" in navigator)) return;
+  if (!want) {
+    const lock = screenWakeLock;
+    screenWakeLock = null;
+    lock?.release().catch(() => {});
+    return;
+  }
+  if (screenWakeLock || screenWakePending) return;
+  screenWakePending = true;
+  try {
+    const lock = await navigator.wakeLock.request("screen");
+    if (!screenWakeWanted) {
+      lock.release().catch(() => {});
+      return;
+    }
+    screenWakeLock = lock;
+    lock.addEventListener("release", () => {
+      if (screenWakeLock === lock) screenWakeLock = null;
+    });
+  } catch {
+    /* ignore */
+  } finally {
+    screenWakePending = false;
+  }
 }
 
 function scenarioCatalog() {
@@ -2991,6 +3113,8 @@ function render() {
   }
 
   const { tab, page, sub, id, sessionId, view, query } = route();
+  if (ui.aftercareActive && !(tab === "intimacy" && page === "control")) leaveAftercare();
+  syncScreenWakeLock();
   applyTheme(tab === "lab" ? "settings" : tab);
   const nested = (tab === "intimacy" && page !== "root")
     || (tab === "settings" && page !== "root")
@@ -3100,6 +3224,7 @@ function bind() {
     });
     slider.addEventListener("change", () => onLevelCommit(Number(slider.value)));
   }
+  bindGestureSurface();
   const form = root.querySelector("#insight-form");
   if (form) form.addEventListener("submit", onInsightSubmit);
   const personaForm = root.querySelector("#persona-form");
@@ -3337,6 +3462,40 @@ async function onLevelCommit(level) {
   await emit(new BleDownlink({ cmd: NlCmd.SET_LEVEL, level, auth: "" }));
 }
 
+function bindGestureSurface() {
+  const surface = root.querySelector("#gesture-surface");
+  if (!surface) return;
+  const label = surface.querySelector("[data-gesture-level]");
+  const show = (level) => {
+    if (label) label.textContent = String(level);
+    surface.setAttribute("aria-valuenow", String(level));
+  };
+  attachGestureSurface(surface, {
+    enabled: getConnected,
+    levelMax: NlConst.levelMax,
+    startLevel: () => {
+      const reported = getUplink()?.level ?? 0;
+      return ui.draftLevel ?? (reported > 0 ? reported : 1);
+    },
+    onPreview: show,
+    onCommit: (level) => {
+      show(level);
+      onLevelCommit(level);
+    },
+    onHoldStop: () => onStop({ fromControl: true }),
+    onDisabled: () => toast("请先连接设备"),
+  });
+}
+
+async function onStop({ fromControl = false } = {}) {
+  ui.draftLevel = null;
+  stopScenarioAutomation();
+  const reason = await emit(new BleDownlink({ cmd: NlCmd.STOP, auth: "" }));
+  haptic([40, 50, 40]);
+  if (fromControl && !reason) ui.aftercareActive = true;
+  render();
+}
+
 async function emit(cmd) {
   const reason = await sendCommand(cmd);
   if (reason) toast(reason);
@@ -3548,9 +3707,20 @@ async function onClick(event) {
   }
   else if (act === "favorites") showFavorites();
   else if (act === "stop") {
-    ui.draftLevel = null;
-    stopScenarioAutomation();
-    await emit(new BleDownlink({ cmd: NlCmd.STOP, auth: "" }));
+    const { tab, page } = route();
+    await onStop({ fromControl: tab === "intimacy" && page === "control" });
+  }
+  else if (act === "toggle-control-gesture") {
+    ui.prefs.controlGesture = !ui.prefs.controlGesture;
+    savePrefs();
+    render();
+  }
+  else if (act === "toggle-aftercare-sound") {
+    ui.aftercareSoundOn = setAftercareSound(!ui.aftercareSoundOn);
+    render();
+  }
+  else if (act === "dismiss-aftercare") {
+    leaveAftercare();
     render();
   }
   else if (act === "scenario-start-auto") {
@@ -3957,7 +4127,20 @@ function patchTelemetry() {
     const text = el.querySelector("[data-status-text]");
     if (text) text.textContent = deviceStatusText(connected, uplink, connection);
   });
+  syncScreenWakeLock();
   if (tab === "intimacy" && page === "control") {
+    const surface = root.querySelector("#gesture-surface");
+    if (surface) {
+      surface.classList.toggle("is-disabled", !connected);
+      const reported = uplink?.level ?? 0;
+      if (ui.draftLevel === reported) ui.draftLevel = null;
+      if (surface.dataset.dragging !== "1") {
+        const shown = ui.draftLevel ?? (reported > 0 ? reported : 1);
+        const label = surface.querySelector("[data-gesture-level]");
+        if (label) label.textContent = String(shown);
+        surface.setAttribute("aria-valuenow", String(shown));
+      }
+    }
     const slider = root.querySelector("#level-slider");
     if (slider && document.activeElement !== slider) {
       const reported = uplink?.level ?? 0;
@@ -4071,19 +4254,9 @@ syncCloudConfig().then((status) => {
 }).catch(() => {});
 bodyNotes.load().then(() => render());
 
-if ("wakeLock" in navigator) {
-  document.addEventListener("visibilitychange", async () => {
-    if (document.visibilityState !== "visible" && ui.scenarioAutomation.authorized) {
-      stopScenarioAutomation();
-    }
-    if (document.visibilityState === "visible" && route().page === "control") {
-      try { await navigator.wakeLock.request("screen"); } catch { /* ignore */ }
-    }
-  });
-} else {
-  document.addEventListener("visibilitychange", () => {
-    if (document.visibilityState !== "visible" && ui.scenarioAutomation.authorized) {
-      stopScenarioAutomation();
-    }
-  });
-}
+document.addEventListener("visibilitychange", () => {
+  if (document.visibilityState !== "visible" && ui.scenarioAutomation.authorized) {
+    stopScenarioAutomation();
+  }
+  syncScreenWakeLock();
+});
