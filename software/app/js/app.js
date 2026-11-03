@@ -23,6 +23,7 @@ import {
 import { createHoldMic, createLiveCall } from "./live-call.js";
 import {
   DEFAULT_CUSTOM_PERSONA,
+  BUILTIN_PERSONA_IDS,
   PERSONA_CARDS,
   PERSONA_PRESETS,
   cardToPromptText,
@@ -879,7 +880,7 @@ function scenarioCatalog() {
     kind: "custom",
   }));
   const personas = (ui.personas.length ? ui.personas : PERSONA_PRESETS)
-    .filter((item) => item.id === "gentle")
+    .filter((item) => BUILTIN_PERSONA_IDS.includes(item.id))
     .map((item) => {
     const card = PERSONA_CARDS[item.id];
     return {
@@ -2042,7 +2043,7 @@ function renderPersonaHub() {
 
 function renderPersonaFixed() {
   const list = (ui.personas.length ? ui.personas : PERSONA_PRESETS)
-    .filter((p) => p.id === "gentle");
+    .filter((p) => BUILTIN_PERSONA_IDS.includes(p.id));
   return `${topbar("固定人设", { back: true, backTo: "#/settings/persona" })}
   <main class="page">
     <p class="sub">点选一个人设作为当天陪伴风格。首选「${PERSONA_CARDS.gentle?.name || "Natsu"}」为固有人设 001。</p>

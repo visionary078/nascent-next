@@ -61,6 +61,27 @@ PRESET_TTS = {
         "emotion": "whisper",
         "gender": "female",
     },
+    "shuheng": {
+        "minimax": "junlang_nanyou",
+        "cosyvoice": "FunAudioLLM/CosyVoice2-0.5B:charles",
+        "mimo": "Milo",
+        "emotion": "whisper",
+        "gender": "male",
+    },
+    "huaixi": {
+        "minimax": "male-qn-qingse",
+        "cosyvoice": "FunAudioLLM/CosyVoice2-0.5B:david",
+        "mimo": "Dean",
+        "emotion": "calm",
+        "gender": "male",
+    },
+    "youting": {
+        "minimax": "danya_xuejie",
+        "cosyvoice": "FunAudioLLM/CosyVoice2-0.5B:claire",
+        "mimo": "茉莉",
+        "emotion": "calm",
+        "gender": "female",
+    },
 }
 
 

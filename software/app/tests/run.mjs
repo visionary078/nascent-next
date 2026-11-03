@@ -415,6 +415,17 @@ const payload = personaPayload({ id: "gentle" });
 assert(payload.assistant_name === "Natsu" && payload.profile.length > 0, "turn payload sends a Waifu-style character card");
 assert(payload.builtinId === "001", "gentle turn payload marks builtin 001 without uploading the prompt");
 assert(!payload.system_prompt, "turn payload does not upload the builtin system prompt");
+{
+  const { BUILTIN_PERSONA_IDS, PERSONA_PRESETS: presets } = await import("../js/persona-cards.js");
+  assert(BUILTIN_PERSONA_IDS.join("/") === "gentle/shuheng/huaixi/youting", "four builtin personas are listed");
+  assert(presets.map((p) => p.id).join("/") === BUILTIN_PERSONA_IDS.join("/"), "presets follow the builtin list");
+  for (const [id, name] of [["shuheng", "疏衡"], ["huaixi", "淮汐"], ["youting", "柚汀"]]) {
+    const deep = personaPayload({ id });
+    assert(deep.assistant_name === name && deep.builtinId === id, `${name} payload marks its builtin id`);
+    assert(!deep.system_prompt, `${name} payload does not upload a prompt`);
+    assert(personaOpeningLine({ id }, "approaching").includes("叫"), `${name} opens by asking how to address her`);
+  }
+}
 const customFallback = cardForPersona({ name: "小测", text: "她是自定义陪伴" });
 assert(customFallback.builtinId == null || customFallback.builtinId === "", "custom fallback cards do not inherit Natsu builtinId");
 assert(!customFallback.system_prompt, "custom fallback cards do not inherit Natsu system_prompt");
