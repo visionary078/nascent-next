@@ -49,3 +49,16 @@ async def test_persona_list_exposes_deepened_presets():
 
     ids = [item.id for item in await list_personas()]
     assert ids == ["gentle", "shuheng", "huaixi", "youting"]
+
+
+def test_preset_list_tts_and_registry_stay_in_sync():
+    from app.routers.persona import _PRESETS
+    from app.services.providers.speech import PRESET_TTS
+
+    preset_ids = {item.id for item in _PRESETS}
+    assert preset_ids == set(DEEPENED_PERSONAS) | {"gentle"}
+    assert preset_ids <= set(PRESET_TTS)
+    for item in _PRESETS:
+        deepened = DEEPENED_PERSONAS.get(item.id)
+        if deepened:
+            assert item.name == deepened.char_name
