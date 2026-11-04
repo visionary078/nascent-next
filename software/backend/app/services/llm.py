@@ -19,6 +19,7 @@ from .agent_contract import (
     TemplateDraftRequest,
 )
 from .body_note_contract import BodyInsightModelOutput
+from .json_repair import parse_model_json
 from .prompt_builder import build_messages
 from .providers import anthropic, openai_compat
 
@@ -59,16 +60,17 @@ async def generate_turn(request: AgentTurnRequest, memories: list) -> AgentTurn:
             temperature=0.85,
             max_tokens=700,
         )
-        result = AgentTurn.model_validate_json(content)
+        parsed, truncated = parse_model_json(content, allow_truncated=True)
+        result = AgentTurn.model_validate(parsed)
         allowed_skills = {
             skill.skill_id for skill in request.active_template.skills
         } if request.active_template else set()
-        skill_proposals = [
+        skill_proposals = [] if truncated else [
             proposal for proposal in result.skill_proposals
             if proposal.skill_id in allowed_skills
         ]
         memory_proposals = (
-            [] if request.session_mode == "wild" or request.memory_policy == "off"
+            [] if truncated or request.session_mode == "wild" or request.memory_policy == "off"
             else result.memory_proposals
         )
         return result.model_copy(update={
@@ -107,7 +109,8 @@ async def generate_control(request: ControlDecisionRequest) -> ControlDecision:
             temperature=0.1,
             max_tokens=180,
         )
-        result = ControlDecision.model_validate_json(content)
+        parsed, _ = parse_model_json(content)
+        result = ControlDecision.model_validate(parsed)
         return _apply_control_policy(
             result,
             request.template_skill_allowlist,
@@ -190,7 +193,8 @@ async def generate_template(request: TemplateDraftRequest) -> PersonaTemplate | 
             temperature=0.2,
             max_tokens=300,
         )
-        template = PersonaTemplate.model_validate_json(content)
+        parsed, _ = parse_model_json(content)
+        template = PersonaTemplate.model_validate(parsed)
         return template.model_copy(update={
             "source": "custom",
             "status": "draft",
@@ -235,8 +239,9 @@ async def generate_body_insight(
             temperature=0.4,
             max_tokens=260,
         )
-        result = BodyInsightModelOutput.model_validate_json(content)
-        return result.dialogue, result.insight_candidate, False
+        parsed, truncated = parse_model_json(content, allow_truncated=True)
+        result = BodyInsightModelOutput.model_validate(parsed)
+        return result.dialogue, None if truncated else result.insight_candidate, False
     except (httpx.HTTPError, ValueError, TypeError, json.JSONDecodeError) as exc:
         logger.warning("Body insight fallback to stub: %s", openai_compat.error_summary(exc))
         dialogue, candidate = _body_insight_stub(scope, sessions)
