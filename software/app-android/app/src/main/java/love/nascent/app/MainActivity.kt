@@ -5,6 +5,7 @@ import android.annotation.SuppressLint
 import android.content.Context
 import android.content.pm.PackageManager
 import android.os.Bundle
+import android.view.WindowManager
 import android.webkit.JavascriptInterface
 import android.webkit.PermissionRequest
 import android.webkit.WebChromeClient
@@ -161,6 +162,17 @@ class MainActivity : AppCompatActivity() {
             runOnUiThread {
                 bridge.disconnect()
                 showSetup()
+            }
+        }
+
+        @JavascriptInterface
+        fun setKeepScreenOn(on: Boolean) {
+            runOnUiThread {
+                if (on) {
+                    window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+                } else {
+                    window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+                }
             }
         }
     }

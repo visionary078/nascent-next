@@ -1053,5 +1053,18 @@ assert(chatRestoreDecision({ hasHistory: true, askedOnce: true }).showNeverAsk =
   assert(PERSONA_SWIPE_HOLD_MS === 3000, "swipe actions stay open for 3 seconds");
 }
 
+{
+  const { levelFromDrag, shouldKeepScreenOn, GESTURE_STEP_PX } = await import("../js/control-gesture.js");
+  assert(levelFromDrag(3, -GESTURE_STEP_PX * 2, 9) === 5, "swiping up two steps raises two levels");
+  assert(levelFromDrag(3, GESTURE_STEP_PX, 9) === 2, "swiping down one step lowers one level");
+  assert(levelFromDrag(3, -(GESTURE_STEP_PX - 1), 9) === 3, "partial step keeps the level");
+  assert(levelFromDrag(8, -GESTURE_STEP_PX * 5, 9) === 9, "gesture never exceeds levelMax");
+  assert(levelFromDrag(2, GESTURE_STEP_PX * 5, 9) === 1, "gesture never drops below level 1");
+  assert(shouldKeepScreenOn({ tab: "records", page: "root", connected: true }), "screen stays on while a device is connected");
+  assert(shouldKeepScreenOn({ tab: "intimacy", page: "control", connected: false }), "screen stays on inside intimacy pages");
+  assert(!shouldKeepScreenOn({ tab: "intimacy", page: "root", connected: false }), "intimacy landing does not hold the screen");
+  assert(!shouldKeepScreenOn({ tab: "records", page: "root", connected: false }), "other tabs release the screen");
+}
+
 console.log(`\n${passed} passed, ${failed} failed`);
 if (failed) process.exit(1);

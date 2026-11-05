@@ -748,6 +748,142 @@ input[type="range"] {
   margin: 14px 0 8px;
 }
 
+.gesture-surface {
+  position: relative;
+  flex: 1;
+  min-height: 220px;
+  margin: 12px 0 4px;
+  border-radius: 24px;
+  border: 1px solid color-mix(in srgb, var(--coral) 22%, var(--line));
+  background: radial-gradient(circle at center, color-mix(in srgb, var(--coral) 10%, var(--bg-elev)) 0%, var(--bg) 100%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  overflow: hidden;
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.gesture-surface.is-disabled {
+  opacity: 0.45;
+}
+
+.gesture-cue {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--muted);
+  font-size: 0.82rem;
+}
+
+.gesture-arrow {
+  color: var(--coral);
+  font-size: 1.1rem;
+  animation: gesture-nudge 1.8s ease-in-out infinite;
+}
+
+.gesture-level {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  z-index: 1;
+}
+
+.gesture-level-num {
+  color: var(--coral);
+  font-size: 4.2rem;
+  font-weight: 800;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+}
+
+.gesture-level-unit {
+  color: var(--fog);
+  font-size: 1.1rem;
+}
+
+.gesture-halo {
+  position: absolute;
+  width: 140px;
+  height: 140px;
+  border-radius: 50%;
+  background: radial-gradient(circle, color-mix(in srgb, var(--coral) 18%, transparent) 0%, transparent 70%);
+  pointer-events: none;
+  animation: gesture-breathe 4s ease-in-out infinite;
+}
+
+.control-input-toggle {
+  align-self: center;
+  margin: 4px 0 8px;
+}
+
+@keyframes gesture-nudge {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-4px); }
+}
+
+@keyframes gesture-breathe {
+  0%, 100% { transform: scale(0.9); opacity: 0.4; }
+  50% { transform: scale(1.2); opacity: 0.8; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .gesture-arrow,
+  .gesture-halo { animation: none; }
+}
+
+.aftercare-page {
+  justify-content: center;
+}
+
+.aftercare-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+  padding: 28px 20px;
+  border-radius: 24px;
+  border: 1px solid color-mix(in srgb, var(--coral) 25%, var(--line));
+  background: var(--bg-card);
+  text-align: center;
+}
+
+.aftercare-card h3 {
+  margin: 0;
+  font-size: 1.2rem;
+}
+
+.aftercare-card p {
+  margin: 0;
+  color: var(--muted);
+  line-height: 1.6;
+}
+
+.aftercare-sound {
+  padding: 10px 18px;
+  border-radius: 999px;
+  border: 1px solid color-mix(in srgb, var(--coral) 40%, transparent);
+  background: color-mix(in srgb, var(--coral) 10%, transparent);
+  color: var(--coral);
+}
+
+.aftercare-sound.active {
+  background: var(--coral);
+  color: #1f1826;
+  font-weight: 600;
+}
+
+.aftercare-dismiss {
+  width: 100%;
+  min-height: 48px;
+  border-radius: 14px;
+  background: var(--bg-soft);
+  color: var(--text);
+}
+
 .hint {
   text-align: center;
   color: var(--muted);
