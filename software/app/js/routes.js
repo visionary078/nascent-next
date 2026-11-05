@@ -1,11 +1,11 @@
-export const NAV_TABS = ["heart", "intimacy", "records", "settings"];
+export const NAV_TABS = ["intimacy", "records", "settings"];
 export const SCENARIO_FLOW = ["new", "define", "start", "call", "chat", "play"];
 
 export function parseHash(hash) {
-  const raw = (hash || "#/heart").replace(/^#/, "");
+  const raw = (hash || "#/intimacy").replace(/^#/, "");
   const [path, search = ""] = raw.split("?");
   const parts = path.split("/").filter(Boolean);
-  const tab = parts[0] || "heart";
+  const tab = parts[0] || "intimacy";
   const last = parts[parts.length - 1];
   let page = parts[1] || "root";
   let sessionId = parts[2] || null;
@@ -26,6 +26,11 @@ export function parseHash(hash) {
     }
   }
   return { tab, page, sub: parts[2] || null, id: parts[3] || null, sessionId, view, query: new URLSearchParams(search) };
+}
+
+/** 「心绪」Tab 已撤掉，旧书签和旧引导落地页统一回到亲密时刻。 */
+export function legacyHeartTarget(parsed) {
+  return parsed.tab === "heart" ? "#/intimacy" : null;
 }
 
 export function legacyNotesTarget(parsed) {

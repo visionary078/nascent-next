@@ -15,7 +15,7 @@ export const FIRST_CARD = {
   category: "body",
   title: "第一次，这些感觉都正常",
   summary: "陌生、紧张、想慢一点，都是正常的开始。",
-  body: "第一次靠近自己的身体时，没有标准节奏。你可以停下来，也可以只待一会儿。这份卡片会留在「心绪」里，随时可以再读。",
+  body: "第一次靠近自己的身体时，没有标准节奏。你可以停下来，也可以只待一会儿。",
   source: "Nascent · AI 伴侣完成礼",
 };
 
@@ -496,7 +496,7 @@ export function mountOnboarding(root, { onComplete }) {
         return `
           <div class="ob-stack">
             <p class="ob-kicker">完成</p>
-            <h2>送你第一张身体小课</h2>
+            <h2>开始之前，想对你说</h2>
             <article class="ob-gift-card">
               <span class="pill">认识身体</span>
               <h3>${FIRST_CARD.title}</h3>
