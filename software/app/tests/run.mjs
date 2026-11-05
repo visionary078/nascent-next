@@ -59,7 +59,6 @@ import {
   pushVadFrame,
   shouldBargeIn,
 } from "../js/live-call.js";
-import { accelMag, connectionDiagnostic, fsrContact, imuHealth, insertCopy, sensorLogicView, uplinkStatCopy } from "../js/lab.js";
 import {
   CLOUD_STORE_KEY,
   clearCloudConfig,
@@ -764,40 +763,6 @@ globalThis.speechSynthesis = {
 const failedSpeech = await speakDialogue("我在", { fetchImpl: async () => ({ ok: false }) });
 assert(!spokeLocal, "cloud TTS failure does not fake a browser voice");
 assert(failedSpeech.played === false && failedSpeech.interrupted === false, "failed cloud TTS reports not played");
-
-assert(insertCopy(NlInsertState.INSERTED) === "在使用中", "lab copy is in-use not medical insertion");
-assert(
-  connectionDiagnostic({ phase: "error", message: "GATT 133" }) === "阶段 error · GATT 133",
-  "lab keeps raw connection diagnostics out of product status bars",
-);
-assert(insertCopy(NlInsertState.UNKNOWN) === "不确定", "unknown insert copy");
-assert(accelMag([0, 0, 0]) < 0.15, "zero accel is empty");
-assert(imuHealth([0, 0, 0]).ok === false, "zero accel is I2C miss");
-assert(imuHealth([0, 0, 1]).ok === true, "1g z is a live IMU");
-assert(fsrContact(599, 0) === false, "below contact threshold");
-assert(fsrContact(600, 0) === true, "at contact threshold");
-
-{
-  const deadImu = sensorLogicView(uplink({ accel: [0, 0, 0], insert_state: "unknown" }));
-  assert(deadImu.fusion.includes("六轴未就绪"), "dead IMU keeps fusion unknown");
-}
-
-assert(
-  uplinkStatCopy({ connected: true, uplink: null, stats: { parsed: 0, notifies: 0 } }).includes("0 帧"),
-  "lab explains missing uplink while connected",
-);
-assert(
-  uplinkStatCopy({ connected: true, uplink: uplink(), stats: { parsed: 3, notifies: 3, lastBytes: 210 } }).includes("已解析 3 帧"),
-  "lab shows parsed frame count",
-);
-assert(
-  uplinkStatCopy({
-    connected: true,
-    uplink: null,
-    stats: { parsed: 0, notifies: 4, lastError: "Unexpected end of JSON" },
-  }).includes("解不出 JSON"),
-  "lab explains truncated notify payloads",
-);
 
 {
   const govLab = new Governor();

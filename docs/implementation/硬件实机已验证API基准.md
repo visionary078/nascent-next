@@ -1,5 +1,7 @@
 # 硬件实机已验证 API 基准
 
+> **2026-11：已退役，仅作历史参考。** 本文验证的是旧 Nascent 玩具侧板（ESP32-S3 + AO3400A 按键模拟 + BOOT 键）。这块板、它的固件和「我的 → 硬件调试」页已从仓库删除。现在的硬件是萨福原厂板，它的接口要等拿到协议后重新实测，结果另写一份基准，不要沿用本文的按键时序和恢复方式。
+
 > 状态：验证期基准，2026-08-29 更新。以后修改产品页、Android 壳、设备协议或
 > toy-sidecar 固件时，先对照本文；不能用一条“看起来更高级”的新接口替换已经在
 > “我的 → 硬件调试”中成功的实机链路，除非新接口重新完成同样的真机验收。
@@ -297,7 +299,7 @@ mode_default | warming | comfort_reached | cleaning | low_battery | safeword
 | 产品与调试按钮映射 | [`software/app/js/app.js`](../../software/app/js/app.js) |
 | 硬件调试展示 | [`software/app/js/lab.js`](../../software/app/js/lab.js) |
 | Android GATT 状态机 | [`software/app-android/.../BleBridge.kt`](../../software/app-android/app/src/main/java/love/nascent/app/BleBridge.kt) |
-| 固件命令闸门 | [`hardware/toy-sidecar/src/downlink_gate.cpp`](../../hardware/toy-sidecar/src/downlink_gate.cpp) |
-| 固件安全总督 | [`hardware/toy-sidecar/src/safety.cpp`](../../hardware/toy-sidecar/src/safety.cpp) |
-| GPIO7 按键状态机 | [`hardware/toy-sidecar/src/ao3400.cpp`](../../hardware/toy-sidecar/src/ao3400.cpp) |
+| 固件命令闸门 | `hardware/toy-sidecar/src/downlink_gate.cpp`（已删除） |
+| 固件安全总督 | `hardware/toy-sidecar/src/safety.cpp`（已删除） |
+| GPIO7 按键状态机 | `hardware/toy-sidecar/src/ao3400.cpp`（已删除） |
 | 跨 Web/Android 检查清单 | [`Web与Android共用UI调试检查.md`](Web与Android共用UI调试检查.md) |

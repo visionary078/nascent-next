@@ -43,7 +43,6 @@ js/
   sleep-summary.js 记录页「近期睡眠」：夜间心率分段 + 心绪对照（不发给模型）
   body-notes.js   使用记录、笔记、临时对话和后端同步状态
   onboarding.js   首次引导
-  lab.js          硬件联调页（#/lab，从「我的」最下方进入）
   ai-plugin.js    「连接我的 AI」邀请与建议桥（调档仍走 sendCommand）
   api.js          nlove 演示站把 /v1 指到 loveapi.divesee.com；本机仍走相对路径
   cloud-config.js 设置页云端接口：本机 API 地址、密钥与口令，不进数据导出
@@ -51,7 +50,7 @@ js/
   scenario-session.js  情景聊天回合、头像压缩与云端 TTS
   live-call.js         通话连续听：VAD 切句、云端转写与播报
   app.js          A/B/C 三层界面与身体笔记独立导航
-tests/run.mjs     总督、心绪、链路、联调页、身体笔记与睡眠摘要回归
+tests/run.mjs     总督、心绪、链路、身体笔记与睡眠摘要回归
 ```
 
 ### 三层的边界是有意的
@@ -65,7 +64,8 @@ A 层（心绪）不放任何能改变强度的控件——首页误触不该让
 ## 协议怎么进来的
 
 `js/protocol.js` 由 `protocol/tools/gen.py` 从 `contract.yaml` 生成后
-直接投放到位，与固件的 `nascent_protocol.h`、后端的 `protocol.py` 同源。
+直接投放到位，与后端的 `protocol.py` 同源。当前契约仍是旧 Nascent 玩具侧板的协议，
+拿到萨福板的蓝牙协议后整体替换。
 
 ```bash
 cd protocol && python3 tools/gen.py
@@ -76,9 +76,10 @@ cd protocol && python3 tools/gen.py
 
 ## 设备连接
 
-手机直连玩具侧那块 ESP32-S3（广播名 `Nascent-Toy`），连接入口在「我的」页。
-协议 0.3.0 之前中间还有一块行空板 K10，现在没有了；GATT 的 UUID 一个都没改，
-所以页面这边只是换了个连接对象，不是换了套协议。心绪页的状态条只展示，不调强度。
+> 2026-11：现在的硬件是萨福原厂板。下面描述的 `Nascent-Toy` 连接、WiFi 备用通道和 BOOT 键恢复都属于已退役的旧 Nascent 板；代码暂时保留，等萨福协议到了再替换。
+
+旧板连接方式：手机直连玩具侧那块 ESP32-S3（广播名 `Nascent-Toy`），连接入口在「我的」页。
+状态条只展示，不调强度。
 
 | 可以 | 不行 |
 |---|---|
@@ -98,17 +99,14 @@ Android 壳没有这个矛盾（明文放行 + 原生 GATT 桥），所以 **WiF
 
 网站、PWA 与 Android App 共用这一份「我的」页。连上玩具后可填写 2.4 GHz SSID，
 把 `set_wifi` 写入设备 NVS（密码不上云）。写入后断开蓝牙约 20 秒，再把通道切到
-WiFi 并填玩具地址。没有 NVS 时固件仍可回退到 `local_config.h`。
+WiFi 并填玩具地址。
 
-### 硬件联调
-
-产品 App 还没做完时，从「我的」最下方进入 **硬件联调**（`#/lab`）验板：直连 `Nascent-Toy`、看 DHT/FSR/IMU、对照使用状态融合规则、调档/灯语、核对 BOOT 停机。发指令仍走 `sendCommand()`，页面点「试远程恢复」必须被总督拒绝。
+硬件联调页（原 `#/lab`）已随旧板一起删除。
 
 ### 恢复不在页面里
 
-停机之后页面**发不出**恢复指令，这不是漏了个按钮：`resume` 在设备端根本没有
-指令分支，解除闩锁只能长按玩具侧板上的 BOOT 键 2 秒。总督会显式拒绝并给出文案，
-不要试图「补上」这个功能。
+停机之后页面**发不出**恢复指令，这不是漏了个按钮：总督会显式拒绝 `resume`，
+不要试图「补上」这个功能。旧板上恢复只能长按玩具侧 BOOT 键；萨福板怎么恢复，以实测为准。
 
 ## 检查
 
