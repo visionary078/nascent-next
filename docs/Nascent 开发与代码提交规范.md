@@ -1,16 +1,18 @@
 # Nascent 开发与代码提交规范
 
-**适用对象：**所有参与 Nascent 固件、App、后端、协议、文档、测试和硬件接线的同事。
+**适用对象：**所有参与 Nascent App、后端、协议、文档和测试的同事。
+
+> 2026-11 起硬件为萨福原厂板，旧 Nascent 玩具侧板的固件 `hardware/` 与 `datasheets/` 已从仓库删除。本文中关于固件、引脚、PlatformIO 的旧规则已经去掉；需要时查 git 历史。
 
 **目标：**让硬件、协议、软件可以并行开发，同时避免三端各写各的字段、互相覆盖代码、形成超大 PR，或把文件提交到错误目录。
 
 每个小任务使用一个短分支，尽早创建 Draft PR；main 始终保持可集成。不要建立个人长期分支、模块长期分支或整个阶段共用分支。
 
-验证期单板 Demo 的架构与红线见 [`README.md`](../README.md)。产品架构的权威副本在仓库里：[`docs/architecture/产品架构.md`](architecture/产品架构.md)。飞书可以讨论草稿，不能当作唯一出处。
+当前运行结构与红线见 [`README.md`](../README.md)。产品架构的权威副本在仓库里：[`docs/architecture/产品架构.md`](architecture/产品架构.md)。飞书可以讨论草稿，不能当作唯一出处。
 
 # 1. 仓库与 AI 入口
 
-GitHub 仓库：[Binomial-distribution/nascent](https://github.com/Binomial-distribution/nascent)
+GitHub 仓库：[visionary078/nascent-next](https://github.com/visionary078/nascent-next)（旧组织仓库 `Binomial-distribution/nascent` 不再使用）
 
 仓库根目录 `AGENTS.md` 要求 AI 在开发、Review、文档和协议任务开始前阅读本文件，以及任务涉及的子目录 README。
 
@@ -21,17 +23,9 @@ GitHub 仓库：[Binomial-distribution/nascent](https://github.com/Binomial-dist
 **首次拉取：**
 
 ```bash
-git clone https://github.com/Binomial-distribution/nascent.git
-cd nascent
+git clone https://github.com/visionary078/nascent-next.git
+cd nascent-next
 ```
-
-固件首次构建会拉 `espressif32` 工具链，耗时较长。第三方驱动已经 vendored 在 `hardware/*/lib/`，不需要再跑 `pio lib install`。
-
-协议 `0.3.0-demo` 删掉了行空板 K10 工程，所以 DFRobot 的 `platform-unihiker` 平台也不再需要——现在只有 `hardware/toy-sidecar/` 一个固件工程，平台就是标准的 `espressif32`。如果你的 `~/.platformio` 里还留着 `platform-unihiker`，它只是占空间，不影响构建。
-
-WiFi 备用通道的凭据优先由设置页 `set_wifi` 写入玩具 NVS；没有 NVS 时回退到
-被 gitignore 的 `hardware/toy-sidecar/include/local_config.h`（有 `.example` 模板）。
-两处都没有也能正常构建，只是 WiFi 通道不启用，只剩 BLE。
 
 **开始新任务前：**
 
@@ -49,36 +43,32 @@ git status --short --branch
 
 | 类型 | 示例 | 适用情况 |
 |---|---|---|
-| 协议 | `feat/protocol-resume` | 改 `contract.yaml`、生成物、GATT / WiFi WebSocket 文档 |
-| 固件 | `feat/toy-boot-key-deadzone` | 单个模块的功能或标定 |
+| 协议 | `feat/protocol-saffo-gatt` | 改 `contract.yaml`、生成物、GATT / WiFi WebSocket 文档 |
 | 软件 | `feat/app-ble-scan` | App 或后端的一块可演示功能 |
-| 修复 | `fix/toy-dht-interval` | 明确且范围较小的问题修复 |
-| 文档 | `docs/pinout-toy` | 接线、决策、协作规范 |
-| 工程配置 | `chore/vendor-neopixel` | 工具链、依赖升级、gitignore |
+| 修复 | `fix/app-reconnect` | 明确且范围较小的问题修复 |
+| 文档 | `docs/saffo-stop-behavior` | 决策、实测记录、协作规范 |
+| 工程配置 | `chore/ci-node` | 工具链、依赖升级、gitignore |
 
 ```bash
 git switch -c feat/your-small-task
 ```
 
-不要使用“某某个人开发分支”“固件长期分支”或 `demo-phase` 共用分支。联调演示使用已经集成的 main；如需固定演示快照，在演示提交上创建 `demo-0.1` 一类标签。
+不要使用“某某个人开发分支”“模块长期分支”或 `demo-phase` 共用分支。联调演示使用已经集成的 main；如需固定演示快照，在演示提交上创建 `demo-0.1` 一类标签。
 
 # 4. 文件放置规则
 
 | 路径 | 放置内容 | 注意事项 |
 |---|---|---|
 | `protocol/` | 三端唯一事实来源：`contract.yaml`、生成器、Schema、链路文档 | 改协议只改契约再跑生成器。禁止手改 `generated/`、`schemas/`，以及投放到 App/后端包内的副本 |
-| `hardware/toy-sidecar/` | 玩具侧，**demo 里唯一一块板**：传感、入体推断、灯语、原按键模拟、BOOT 键、BLE 与 WiFi 两条传输 | 这块板不驱动电机。`lib/` 下是 vendored 驱动，升级步骤见 `hardware/VENDOR.md`。下行拒绝规则只改 `downlink_gate.*` 一处，两条传输共用；不要在 `ble_peripheral.*` 或 `wifi_ws.*` 里各写一份 |
-| `hardware/VENDOR.md` | 第三方库来源、版本、裁剪规则 | 升级库必须同步改这个文件 |
 | `software/app/` | 浏览器控制端（FastAPI 托管的静态网站） | A 层不放调强度的控件。发指令只走 `sendCommand()`，不许绕过 `Governor` |
 | `software/app-android/` | 同一套 Web UI 的 Android 壳 | 只做 WebView + 原生 GATT 桥。不要在 Kotlin 里重写页面或总督 |
 | `software/backend/` | FastAPI 云端 | 云端只给建议，不控制硬件。密钥只进 `secrets/.env`（或本机 `.env`），不进仓库 |
-| `datasheets/` | 已选型器件的厂商 datasheet | 不放视频、超大原稿、临时导出 |
 | `docs/` | 协作规范、决策记录 | 确认结论和开放问题应分开记录 |
 | `docs/architecture/` | 产品架构（权威副本） | 必须进本仓库。飞书只作讨论草稿，改完要同步回这里再提交 |
 
-`hardware/k10-controller/`（行空板 K10：摇杆、屏、BLE、ESP-NOW 网关）在协议 `0.3.0-demo` 已整个删除，手机改为直连玩具侧。看到旧分支或旧文档引用这个路径，按「它不存在」处理，不要重建。
+`hardware/`（旧 Nascent 玩具侧固件，含已删的 `k10-controller/`）和 `datasheets/` 已在 2026-11 删除。看到旧分支或旧文档引用这些路径，按「它不存在」处理，不要重建。
 
-**跨端字段一律进 `protocol/contract.yaml`。** 不要在固件宏、JavaScript 常量和 Python 模型里各抄一份 UUID、档位上限或超时。改完契约后必须：
+**跨端字段一律进 `protocol/contract.yaml`。** 不要在 JavaScript 常量和 Python 模型里各抄一份 UUID、档位上限或超时。改完契约后必须：
 
 ```bash
 cd protocol && python3 tools/gen.py
@@ -121,19 +111,18 @@ git push -u origin feat/your-small-task
 
 禁止在混合工作区中使用 `git add .`、`git add -A` 或 `git commit -am`。
 
-禁止提交：`.env`、私钥、访问令牌、WiFi SSID 与密码、真实设备 MAC（这些一律写进已被 gitignore 的 `hardware/toy-sidecar/include/local_config.h`）、`.pio/`、`node_modules`、`.venv/`、构建产物、以及未按 `VENDOR.md` 裁剪的完整第三方仓库。
+禁止提交：`.env`、私钥、访问令牌、WiFi SSID 与密码、真实设备 MAC、`node_modules`、`.venv/`、构建产物、以及整份拷进来的第三方仓库。
 
 ## 各层提交前检查
 
 | 改了什么 | 最少要跑 |
 |---|---|
 | `protocol/contract.yaml` 或生成器 | `python3 protocol/tools/gen.py --check` |
-| `hardware/toy-sidecar/` | `cd hardware/toy-sidecar && pio run`（有板再 `-t upload`）。分区表是 `huge_app.csv`，从旧固件升上来必须整片重烧 |
-| `software/app/` | `cd software/app && node tests/run.mjs`；浏览器打开后端托管的网站再点一遍三层入口 |
-| `software/app-android/` | Android Studio 安装到真机后再连一次玩具侧；没有 SDK 时在 PR 写明未构建 |
-| `software/backend/` | `python3 -m py_compile app/*.py app/routers/*.py app/services/*.py` |
+| `software/app/` | `cd software/app && node tests/run.mjs`；浏览器打开后端托管的网站再点一遍三个底栏入口 |
+| `software/app-android/` | `./gradlew assembleDebug`，安装到真机后再连一次设备；没有 SDK 时在 PR 写明未构建 |
+| `software/backend/` | `python -m ruff check software/backend/app software/backend/tests` 和 `python -m pytest software/backend/tests -q` |
 
-没有 PlatformIO 时，在 PR 里写明「本机未构建、请 Reviewer 补跑」，不要假装已经验证过。控制端不再依赖 Flutter。
+没有构建环境或真设备时，在 PR 里写明「本机未构建 / 未上真机、请 Reviewer 补跑」，不要假装已经验证过。
 
 涉及 Web UI、Android 原生桥、系统权限或小米手环时，还必须执行
 [`Web 与 Android 共用 UI：Bug 修复与权限检查清单`](implementation/Web与Android共用UI调试检查.md)。
@@ -147,11 +136,10 @@ git push -u origin feat/your-small-task
 |---|---|---|
 | `docs/architecture/` 产品架构、分层职责、安全不变量 | 项目负责人 | 全员实现口径；只改飞书不算数 |
 | `protocol/contract.yaml`、GATT / WiFi WebSocket 报文、枚举线序 | 项目负责人 | 三端同时失效或静默错位 |
-| 安全路径：`safety.*`、`boot_key.*`、`governor.js`、`resume` / `stop`、`ao3400.*` 按键时序、档位封顶 | 项目负责人 | 停机、封顶、远程恢复都是产品红线。`clearLatch()` 只允许有一处调用点 |
-| 传输层：`downlink_gate.*`、`transport.h`、`ble_peripheral.*`、`wifi_ws.*`、通道切换与断连归零 | 项目负责人 | 两条传输共用一份拒绝规则；只改一边等于给攻击者留一条弱链路 |
+| 安全路径：`governor.js`、`session.js`（`sendCommand`）、`stop` 调用点、`resume`、档位封顶、任何新的连续调档来源 | 项目负责人 | 停机、封顶、远程恢复都是产品红线 |
+| 传输层：`ble.js`、`ws.js`、`channel.js`、Android `BleBridge`、断连处理 | 项目负责人 | 影响指令能不能到、断连后会不会停 |
 | BLE / WebSocket 鉴权、会话令牌、云端密钥与审核开关 | 项目负责人 | 影响设备被谁控制 |
-| 入体推断、对外文案、医疗化表述 | 项目负责人 | 文案和算法承诺受产品红线约束 |
-| 引脚、原按键开关器件与限流电阻、vendored 库升级 | 硬件主责 | 焊错脚或重复定义库会让整板不可用；动那颗 10kΩ 等于动安全论证 |
+| 人设 prompt 的安全规则、对外文案、医疗化表述 | 项目负责人 | 文案和算法承诺受产品红线约束 |
 | 普通 UI、后端桩、模块内测试、文档 | 模块主责，可邀请其他同事 | 由最熟悉该层的人负责质量 |
 
 项目负责人不需要逐条检查每个 Commit，但需要关注每个 PR，并亲自 Review 上表中的高风险改动。协议和安全相关改动建议在开始实现后尽早建立 Draft PR，以便提前发现方向问题。
@@ -160,20 +148,20 @@ git push -u origin feat/your-small-task
 
 在 Cursor 或其他支持仓库指令的 AI 工具中，可以使用下面的开场说明：
 
-> 请先阅读仓库根目录 AGENTS.md、docs/Nascent 开发与代码提交规范.md，以及 docs/architecture/产品架构.md，再开始本任务。只修改本任务负责的文件，保留其他人的改动；使用短分支。架构结论写进 docs/architecture/，不要只改飞书。改协议只改 protocol/contract.yaml 再运行 python3 protocol/tools/gen.py，禁止手改 generated/ 和投放到 App/后端的协议副本。固件通用驱动用现有 vendored 库，不要自己写 DHT11 / MPU6050 / NeoPixel / JSON / BLE / WebSocket 底层。先创建 Draft PR，不要自行合并。
+> 请先阅读仓库根目录 AGENTS.md、docs/Nascent 开发与代码提交规范.md，以及 docs/architecture/产品架构.md，再开始本任务。只修改本任务负责的文件，保留其他人的改动；使用短分支。架构结论写进 docs/architecture/，不要只改飞书。改协议只改 protocol/contract.yaml 再运行 python3 protocol/tools/gen.py，禁止手改 generated/ 和投放到 App/后端的协议副本。设备指令只走 sendCommand() → Governor。先创建 Draft PR，不要自行合并。
 
-如果任务涉及协议、安全路径、停机恢复、档位封顶、入体推断文案或引脚，还应明确告诉 AI：这是需要项目负责人 Review 的高风险改动。另外要交代清楚两条容易被 AI 「顺手修好」的不变量：`resume` 不是可投递指令，不要给它补回一个指令分支；下行拒绝规则只有 `downlink_gate.*` 一份，不要为了「让两条传输各自更健壮」而复制成两份。
+如果任务涉及协议、安全路径、停机恢复、档位封顶或人设安全规则，还应明确告诉 AI：这是需要项目负责人 Review 的高风险改动。另外要交代清楚一条容易被 AI 「顺手修好」的不变量：`resume` 不是可投递指令，不要给它补发送入口或「恢复」按钮。
 
 # 9. 本规范覆盖到哪里
 
 已经约定：短分支、显式暂存、Draft PR、文件放置、架构文档进仓库、协议生成流程、提交前检查和高风险评审。
 
-尚未具备：自动范围校验器、固件硬件在环测试。CI 现已覆盖 `pytest`、`ruff`、前端 `node tests/run.mjs` 和 `protocol/tools/gen.py --check`。没有这些工具时，仍按第 6、7 节人工执行；不要因为本地没跑 CI 就跳过 `gen.py --check`。
+尚未具备：自动范围校验器、真机在环测试。CI 配置覆盖 `pytest`、`ruff`、前端 `node tests/run.mjs` 和 `protocol/tools/gen.py --check`；CI 没跑时，按第 6、7 节在本地执行，不要因此跳过 `gen.py --check`。
 
-本规范替代不了上板验证和人工 Review。每个涉及执行器或停机路径的任务，最终仍需在真机上确认三件事：停止立刻生效；从 App 写 `resume` 不能恢复；恢复只有长按玩具侧 BOOT 键 2 秒这一条路。
+本规范替代不了真机验证和人工 Review。每个涉及调档或停机路径的任务，最终仍需在真机上确认：停止立刻生效；从 App 发不出恢复；断连后设备停下，重连不会回到原档位。萨福板的具体停止与断连行为，以实测记录为准。
 
 # 10. 适用边界
 
-当前目录规则和红线专用于 Nascent 仓库。其它产品可以立即采用短分支、显式暂存、Draft PR 和高风险评审原则，但不能直接复制本仓库的协议生成流程或硬件 vendored 约定。
+当前目录规则和红线专用于 Nascent 仓库。其它产品可以立即采用短分支、显式暂存、Draft PR 和高风险评审原则，但不能直接复制本仓库的协议生成流程。
 
-<https://github.com/Binomial-distribution/nascent>
+<https://github.com/visionary078/nascent-next>

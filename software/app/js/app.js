@@ -1,5 +1,5 @@
 import { apiFetch } from "./api.js";
-import { BleDownlink, NlCmd, NlConst, NlInsertState, NlKeyPress, NlLedState, NlMode } from "./protocol.js";
+import { BleDownlink, NlCmd, NlConst, NlInsertState, NlKeyPress, NlMode } from "./protocol.js";
 import { CHANNEL, CHANNEL_LABEL, currentShell } from "./transport.js";
 import { bodyNotes } from "./body-notes.js";
 import { parseHash, legacyNotesTarget, SCENARIO_FLOW } from "./routes.js";
@@ -61,7 +61,6 @@ import {
   togglePinnedKey,
   visibleScenarioItems,
 } from "./persona-list.js";
-import { patchLabDom, renderLab, saveCheck } from "./lab.js";
 import {
   clearCloudConfig,
   cloudSummary,
@@ -133,8 +132,6 @@ const ui = {
   deferredPrompt: null,
   onboarding: null,
   gateReady: false,
-  labReject: "",
-  labWildArmed: false,
   persona: loadPersonaSettings(),
   guideSheetIndex: 0,
   devices: loadDevices(),
@@ -1717,11 +1714,6 @@ function renderSettings() {
       <strong>Nascent Love+</strong>
       <small>${ui.prefs.subscribed ? "已订阅" : "订阅与会员管理"}</small>
     </button>
-    <div class="group">关于</div>
-    <button class="list-row" data-act="lab">
-      <strong>硬件调试</strong>
-      <small>查看连接、传感器与设备状态</small>
-    </button>
   </main>
   ${nav("settings")}`;
 }
@@ -2992,11 +2984,10 @@ function render() {
   }
 
   const { tab, page, sub, id, sessionId, view, query } = route();
-  applyTheme(tab === "lab" ? "settings" : tab);
+  applyTheme(tab);
   const nested = (tab === "intimacy" && page !== "root")
     || (tab === "settings" && page !== "root")
-    || (tab === "records" && (view === "insight" || view === "sleep"))
-    || tab === "lab";
+    || (tab === "records" && (view === "insight" || view === "sleep"));
   const onCall = tab === "intimacy" && page === "scenario" && sessionId === "call";
   const onChat = tab === "intimacy" && page === "scenario" && sessionId === "chat";
   const fromCall = Boolean(ui.chatFromCall && onChat);
@@ -3024,18 +3015,7 @@ function render() {
     }
   }
 
-  if (tab === "lab") {
-    root.innerHTML = renderLab({
-      connected: getConnected(),
-      uplink: getUplink(),
-      channel: link.channel,
-      token: link.token,
-      connectionState: getConnectionState(),
-      lastReject: ui.labReject,
-      uplinkStats: link.uplinkStats,
-    });
-  }
-  else if (tab === "heart") root.innerHTML = renderHeart();
+  if (tab === "heart") root.innerHTML = renderHeart();
   else if (tab === "settings") {
     if (page === "persona" && sub === "fixed") root.innerHTML = renderPersonaFixed();
     else if (page === "persona" && sub === "customs") root.innerHTML = renderCustomPersonaList();
@@ -3116,9 +3096,6 @@ function bind() {
   bindHoldMic();
   bindCallSwipe();
   bindPersonaSwipe();
-  root.querySelectorAll("[data-act=lab-check]").forEach((el) => {
-    el.addEventListener("change", () => saveCheck(el.dataset.id, el.checked));
-  });
 }
 
 async function onInsightSubmit(event) {
@@ -3673,43 +3650,6 @@ async function onClick(event) {
   else if (act === "delete-note") confirmDeleteNote(t.dataset.note);
   else if (act === "delete-session") confirmDeleteSession(t.dataset.session);
   else if (act === "save-insight") saveInsight(Number(t.dataset.index));
-  else if (act === "lab") go("#/lab");
-  else if (act === "lab-mode") {
-    const mode = t.dataset.mode;
-    if (mode === NlMode.WILD && !ui.labWildArmed) {
-      ui.labWildArmed = true;
-      toast("再点一次确认进入失控模式（15 分钟后自动退回手动）");
-      return;
-    }
-    ui.labWildArmed = false;
-    await emit(new BleDownlink({ cmd: NlCmd.SET_MODE, mode, auth: "" }));
-  }
-  else if (act === "lab-led") {
-    await emit(new BleDownlink({ cmd: NlCmd.SET_LED, led: t.dataset.led, auth: "" }));
-  }
-  else if (act === "lab-power-on" || act === "lab-power-off") {
-    await toggleOriginalPower(
-      act === "lab-power-on"
-        ? "长按开机：GPIO7 拉高约 1.2 秒"
-        : "长按关机：同样是 1.2 秒取反",
-    );
-  }
-  else if (act === "lab-tap") {
-    toast("点按调档：GPIO7 短接约 120ms");
-    await emit(new BleDownlink({ cmd: NlCmd.PRESS_KEY, key: NlKeyPress.TAP, auth: "" }));
-  }
-  else if (act === "lab-resume") {
-    const reason = await sendCommand(new BleDownlink({ cmd: NlCmd.RESUME, auth: "" }));
-    ui.labReject = reason || "意外：总督没有拒绝 resume";
-    toast(ui.labReject);
-    render();
-  }
-  else if (act === "lab-check") {
-    return;
-  }
-  else if (act === "lab-connection-settings") {
-    window.NascentShell?.openConnectionSettings?.();
-  }
   else if (act === "connect") connectOrDisconnect();
   else if (act === "connect-band") connectOrDisconnectBand();
   else if (act === "channel") {
@@ -3926,8 +3866,7 @@ async function connectOrDisconnect() {
   } catch (err) {
     // 用户在系统蓝牙选择器里点了取消，不是错误，不要弹提示。
     if (err?.name === "NotFoundError") return;
-    if (route().tab === "lab") toast(err.message || String(err));
-    else toast("暂时无法连接，请稍后重试");
+    toast("暂时无法连接，请稍后重试");
   }
 }
 
@@ -3981,15 +3920,6 @@ function patchTelemetry() {
     if (chips[0]) chips[0].textContent = `温感 ${sensorLabel(sensors.temperature_state)}`;
     if (chips[1]) chips[1].textContent = `压力 ${sensorLabel(sensors.pressure_rhythm)}`;
     if (chips[2]) chips[2].textContent = hrChipText(sensors);
-  }
-  if (tab === "lab") {
-    patchLabDom(root, {
-      connected,
-      uplink,
-      token: link.token,
-      connectionState: connection,
-      uplinkStats: link.uplinkStats,
-    });
   }
 }
 
